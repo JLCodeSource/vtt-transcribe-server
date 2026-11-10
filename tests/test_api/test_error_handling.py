@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 def test_file_size_limit_enforcement() -> None:
     """Test that files exceeding size limits are rejected."""
-    from vtt_transcribe.api import app
+    from vtt_server import app
 
     client = TestClient(app)
 
@@ -24,7 +24,7 @@ def test_file_size_limit_enforcement() -> None:
 
 def test_unsupported_file_type() -> None:
     """Test rejection of unsupported file types."""
-    from vtt_transcribe.api import app
+    from vtt_server import app
 
     client = TestClient(app)
 
@@ -40,7 +40,7 @@ def test_unsupported_file_type() -> None:
 
 def test_missing_api_key() -> None:
     """Test that missing API key returns 422."""
-    from vtt_transcribe.api import app
+    from vtt_server import app
 
     client = TestClient(app)
 
@@ -55,7 +55,7 @@ def test_missing_api_key() -> None:
 
 def test_missing_file() -> None:
     """Test that missing file returns 422."""
-    from vtt_transcribe.api import app
+    from vtt_server import app
 
     client = TestClient(app)
 
@@ -67,7 +67,7 @@ def test_missing_file() -> None:
 
 def test_invalid_job_id_format() -> None:
     """Test that invalid job ID format is handled."""
-    from vtt_transcribe.api import app
+    from vtt_server import app
 
     client = TestClient(app)
 
@@ -79,7 +79,7 @@ def test_invalid_job_id_format() -> None:
 
 def test_empty_filename() -> None:
     """Test that files without filenames are rejected."""
-    from vtt_transcribe.api import app
+    from vtt_server import app
 
     client = TestClient(app)
 
@@ -97,7 +97,7 @@ def test_empty_filename() -> None:
 
 def test_error_response_structure() -> None:
     """Test that error responses have consistent structure."""
-    from vtt_transcribe.api import app
+    from vtt_server import app
 
     client = TestClient(app)
 

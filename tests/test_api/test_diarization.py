@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Create test client for FastAPI app."""
-    from vtt_transcribe.api.app import app
+    from vtt_server.app import app
 
     return TestClient(app)
 
@@ -24,8 +24,8 @@ def clear_hf_token(monkeypatch):
 class TestDiarizationEndpoint:
     """Tests for diarization-enabled transcription."""
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
-    def test_transcribe_with_diarization_requires_hf_token(self, _mock_transcriber, client):  # noqa: PT019
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
+    def test_transcribe_with_diarization_requires_hf_token(self, _mock_transcriber, client):
         """POST /transcribe with diarize=true should require HF token."""
         response = client.post(
             "/api/transcribe",
@@ -35,7 +35,7 @@ class TestDiarizationEndpoint:
         assert response.status_code == 400
         assert "huggingface" in response.json()["detail"].lower() or "hf_token" in response.json()["detail"].lower()
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_transcribe_with_diarization_accepts_hf_token(self, mock_transcriber, client):
         """POST /transcribe with diarize=true and hf_token should succeed."""
         mock_instance = mock_transcriber.return_value
@@ -49,7 +49,7 @@ class TestDiarizationEndpoint:
         assert response.status_code in [200, 201, 202]
         assert "job_id" in response.json()
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_transcribe_with_diarization_uses_env_token(self, mock_transcriber, client, monkeypatch):
         """POST /transcribe with diarize=true should use HF_TOKEN env var if no token provided."""
         monkeypatch.setenv("HF_TOKEN", "hf_env_token")
@@ -64,7 +64,7 @@ class TestDiarizationEndpoint:
         assert response.status_code in [200, 201, 202]
         assert "job_id" in response.json()
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_transcribe_with_diarization_device_parameter(self, mock_transcriber, client):
         """POST /transcribe with device parameter should be accepted."""
         mock_instance = mock_transcriber.return_value
@@ -91,8 +91,8 @@ class TestDiarizeOnlyEndpoint:
         response = client.post("/api/diarize")
         assert response.status_code in [400, 422]  # Bad request or validation error, but endpoint exists
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
-    def test_diarize_requires_hf_token(self, _mock_transcriber, client):  # noqa: PT019
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
+    def test_diarize_requires_hf_token(self, _mock_transcriber, client):
         """POST /diarize should require HF token."""
         response = client.post(
             "/api/diarize",
@@ -100,7 +100,7 @@ class TestDiarizeOnlyEndpoint:
         )
         assert response.status_code in [400, 422]
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_diarize_with_hf_token_succeeds(self, mock_transcriber, client):
         """POST /diarize with HF token should succeed."""
         mock_instance = mock_transcriber.return_value
@@ -114,7 +114,7 @@ class TestDiarizeOnlyEndpoint:
         assert response.status_code in [200, 201, 202]
         assert "job_id" in response.json()
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_diarize_with_device_parameter(self, mock_transcriber, client):
         """POST /diarize with device parameter should be accepted."""
         mock_instance = mock_transcriber.return_value
@@ -127,7 +127,7 @@ class TestDiarizeOnlyEndpoint:
         )
         assert response.status_code in [200, 201, 202]
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_diarize_uses_env_token(self, mock_transcriber, client, monkeypatch):
         """POST /diarize should use HF_TOKEN env var when no token provided."""
         monkeypatch.setenv("HF_TOKEN", "hf_env_token")

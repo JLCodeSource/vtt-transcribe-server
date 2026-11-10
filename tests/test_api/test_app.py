@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Create test client for FastAPI app."""
-    from vtt_transcribe.api.app import app
+    from vtt_server.app import app
 
     return TestClient(app)
 
@@ -83,8 +83,8 @@ class TestAPIServerCoverage:
 
     def test_server_main_function(self) -> None:
         """Test server.py main function."""
-        with patch("vtt_transcribe.api.server.uvicorn.run") as mock_run:
-            from vtt_transcribe.api.server import main
+        with patch("vtt_server.server.uvicorn.run") as mock_run:
+            from vtt_server.server import main
 
             main()
 
@@ -100,14 +100,14 @@ class TestAPIServer100Coverage:
 
     def test_server_imports_and_main(self) -> None:
         """Test server.py imports and main() function."""
-        with patch("vtt_transcribe.api.server.uvicorn.run") as mock_run:
+        with patch("vtt_server.server.uvicorn.run") as mock_run:
             # Force reimport to ensure coverage
             import sys
 
-            if "vtt_transcribe.api.server" in sys.modules:
-                del sys.modules["vtt_transcribe.api.server"]
+            if "vtt_server.server" in sys.modules:
+                del sys.modules["vtt_server.server"]
 
-            from vtt_transcribe.api.server import main
+            from vtt_server.server import main
 
             main()
 
@@ -128,12 +128,12 @@ import sys
 from unittest.mock import patch
 
 # Mock uvicorn before importing
-with patch("vtt_transcribe.api.server.uvicorn"):
+with patch("vtt_server.server.uvicorn"):
     # Import the module to ensure all lines are executed
-    import vtt_transcribe.api.server
+    import vtt_server.server
   # noqa: W293
     # Check that main function exists
-    assert hasattr(vtt_transcribe.api.server, "main")
+    assert hasattr(vtt_server.server, "main")
   # noqa: W293
     print("SUCCESS")
 """
@@ -165,7 +165,7 @@ with patch('uvicorn.run', mock_run):
     # This should trigger __main__ block
     import runpy
     try:
-        runpy.run_module('vtt_transcribe.api.server', run_name='__main__')
+        runpy.run_module('vtt_server.server', run_name='__main__')
     except SystemExit:
         pass  # Expected when main() completes
   # noqa: W293
@@ -193,12 +193,12 @@ def test_server_main_block_coverage() -> None:
     # Mock uvicorn.run to prevent actual server start
     with patch("uvicorn.run") as mock_run:
         # Temporarily remove server module to force reimport
-        if "vtt_transcribe.api.server" in sys.modules:
-            del sys.modules["vtt_transcribe.api.server"]
+        if "vtt_server.server" in sys.modules:
+            del sys.modules["vtt_server.server"]
 
         # Run the module as __main__ to execute line 17
         try:  # noqa: SIM105
-            runpy.run_module("vtt_transcribe.api.server", run_name="__main__")
+            runpy.run_module("vtt_server.server", run_name="__main__")
         except SystemExit:
             pass  # Expected when main() completes
 
@@ -207,14 +207,14 @@ def test_server_main_block_coverage() -> None:
 
 
 class TestAPIAppLifespan:
-    """Test vtt_transcribe/api/app.py lifespan management."""
+    """Test vtt_server/app.py lifespan management."""
 
     @pytest.mark.asyncio
     async def test_lifespan_init_db_error_suppressed(self) -> None:
         """Should suppress database initialization errors."""
         import importlib
 
-        app_module = importlib.import_module("vtt_transcribe.api.app")
+        app_module = importlib.import_module("vtt_server.app")
         lifespan = app_module.lifespan
 
         # Mock app object
@@ -231,11 +231,11 @@ class TestAPIAppLifespan:
 
 
 class TestAPIModels:
-    """Test vtt_transcribe/api/models.py __repr__ methods."""
+    """Test vtt_server/models.py __repr__ methods."""
 
     def test_user_repr(self) -> None:
         """Should generate readable repr for User."""
-        from vtt_transcribe.api.models import User
+        from vtt_server.models import User
 
         user = User(id=1, username="test", email="test@example.com", hashed_password="hash")
         repr_str = repr(user)
@@ -245,7 +245,7 @@ class TestAPIModels:
 
     def test_api_key_repr(self) -> None:
         """Should generate readable repr for APIKey."""
-        from vtt_transcribe.api.models import APIKey
+        from vtt_server.models import APIKey
 
         key = APIKey(id=1, user_id=1, service="openai", encrypted_key="encrypted", key_name="test")
         repr_str = repr(key)
@@ -254,7 +254,7 @@ class TestAPIModels:
 
     def test_transcription_job_repr(self) -> None:
         """Should generate readable repr for TranscriptionJob."""
-        from vtt_transcribe.api.models import TranscriptionJob
+        from vtt_server.models import TranscriptionJob
 
         job = TranscriptionJob(id=1, user_id=1, job_id="test-123", filename="test.mp3", status="completed")
         repr_str = repr(job)
@@ -279,12 +279,12 @@ class TestDatabaseConfiguration:
             # Reload database module to trigger URL conversion
             import importlib
 
-            import vtt_transcribe.api.database
+            import vtt_server.database
 
-            importlib.reload(vtt_transcribe.api.database)
+            importlib.reload(vtt_server.database)
 
             # Check conversion happened
-            assert vtt_transcribe.api.database.DATABASE_URL == "postgresql+asyncpg://user:pass@localhost/db"
+            assert vtt_server.database.DATABASE_URL == "postgresql+asyncpg://user:pass@localhost/db"
         finally:
             # Restore original
             if original_url:
@@ -295,9 +295,9 @@ class TestDatabaseConfiguration:
             # Reload again to restore state
             import importlib
 
-            import vtt_transcribe.api.database
+            import vtt_server.database
 
-            importlib.reload(vtt_transcribe.api.database)
+            importlib.reload(vtt_server.database)
 
     def test_sqlite_url_conversion(self) -> None:
         """Should convert sqlite:// to sqlite+aiosqlite:// (line 17)."""
@@ -312,12 +312,12 @@ class TestDatabaseConfiguration:
             # Reload database module to trigger URL conversion
             import importlib
 
-            import vtt_transcribe.api.database
+            import vtt_server.database
 
-            importlib.reload(vtt_transcribe.api.database)
+            importlib.reload(vtt_server.database)
 
             # Check conversion happened
-            assert vtt_transcribe.api.database.DATABASE_URL == "sqlite+aiosqlite:///./test.db"
+            assert vtt_server.database.DATABASE_URL == "sqlite+aiosqlite:///./test.db"
         finally:
             # Restore original
             if original_url:
@@ -328,17 +328,17 @@ class TestDatabaseConfiguration:
             # Reload again to restore state
             import importlib
 
-            import vtt_transcribe.api.database
+            import vtt_server.database
 
-            importlib.reload(vtt_transcribe.api.database)
+            importlib.reload(vtt_server.database)
 
     @pytest.mark.asyncio
     async def test_get_db_finally_closes_session(self) -> None:
         """Should close session in finally block (line 74)."""
-        from vtt_transcribe.api.database import get_db
+        from vtt_server.database import get_db
 
-        with patch("vtt_transcribe.api.database.database_available", True):
-            with patch("vtt_transcribe.api.database.AsyncSessionLocal") as mock_session_maker:
+        with patch("vtt_server.database.database_available", True):
+            with patch("vtt_server.database.AsyncSessionLocal") as mock_session_maker:
                 mock_session = AsyncMock()
                 mock_session.commit = AsyncMock()
                 mock_session.close = AsyncMock()
@@ -367,10 +367,10 @@ class TestDatabaseFunctions:
     @pytest.mark.asyncio
     async def test_init_db_success(self) -> None:
         """Should initialize database tables successfully."""
-        from vtt_transcribe.api.database import init_db
+        from vtt_server.database import init_db
 
-        with patch("vtt_transcribe.api.database.database_available", True):
-            with patch("vtt_transcribe.api.database.engine") as mock_engine:
+        with patch("vtt_server.database.database_available", True):
+            with patch("vtt_server.database.engine") as mock_engine:
                 mock_conn = AsyncMock()
                 mock_conn.run_sync = AsyncMock()
                 # Create proper async context manager
@@ -386,18 +386,18 @@ class TestDatabaseFunctions:
     @pytest.mark.asyncio
     async def test_init_db_when_unavailable(self) -> None:
         """Should return early if database_available is False."""
-        from vtt_transcribe.api.database import init_db
+        from vtt_server.database import init_db
 
-        with patch("vtt_transcribe.api.database.database_available", False):
+        with patch("vtt_server.database.database_available", False):
             # Should not raise error, just return
             await init_db()
 
     @pytest.mark.asyncio
     async def test_get_db_not_available(self) -> None:
         """Should raise error when database not available."""
-        from vtt_transcribe.api.database import get_db
+        from vtt_server.database import get_db
 
-        with patch("vtt_transcribe.api.database.database_available", False):
+        with patch("vtt_server.database.database_available", False):
             with pytest.raises(RuntimeError) as exc_info:
                 async for _ in get_db():
                     pass
@@ -407,10 +407,10 @@ class TestDatabaseFunctions:
     @pytest.mark.asyncio
     async def test_get_db_rollback_on_error(self) -> None:
         """Should rollback session on exception."""
-        from vtt_transcribe.api.database import get_db
+        from vtt_server.database import get_db
 
-        with patch("vtt_transcribe.api.database.database_available", True):
-            with patch("vtt_transcribe.api.database.AsyncSessionLocal") as mock_session_maker:
+        with patch("vtt_server.database.database_available", True):
+            with patch("vtt_server.database.AsyncSessionLocal") as mock_session_maker:
                 mock_session = AsyncMock()
                 mock_session.commit = AsyncMock()
                 mock_session.rollback = AsyncMock()
@@ -434,10 +434,10 @@ class TestDatabaseFunctions:
     @pytest.mark.asyncio
     async def test_get_db_with_exception(self) -> None:
         """Should handle exceptions in database session."""
-        from vtt_transcribe.api.database import get_db
+        from vtt_server.database import get_db
 
-        with patch("vtt_transcribe.api.database.database_available", True):
-            with patch("vtt_transcribe.api.database.AsyncSessionLocal") as mock_session_maker:
+        with patch("vtt_server.database.database_available", True):
+            with patch("vtt_server.database.AsyncSessionLocal") as mock_session_maker:
                 mock_session = AsyncMock()
                 mock_session.__aenter__ = AsyncMock(return_value=mock_session)
                 mock_session.__aexit__ = AsyncMock()

@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Create test client for FastAPI app."""
-    from vtt_transcribe.api.app import app
+    from vtt_server.app import app
 
     return TestClient(app)
 
@@ -26,7 +26,7 @@ class TestWebSocketConnection:
     def test_websocket_sends_initial_status(self, client):
         """WebSocket should send initial job status on connect."""
         # Create a job first
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock_vt:
+        with patch("vtt_server.routes.transcription.VideoTranscriber") as mock_vt:
             # Mock transcriber to return a string result
             mock_instance = MagicMock()
             mock_instance.transcribe.return_value = "[00:00 - 00:05] Test transcript"
@@ -48,9 +48,9 @@ class TestWebSocketConnection:
 
     def test_websocket_sends_progress_updates(self, client):
         """WebSocket should send progress updates during transcription."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -69,9 +69,9 @@ class TestWebSocketConnection:
 
     def test_websocket_closes_on_completion(self, client):
         """WebSocket should close when job completes."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock:
+        with patch("vtt_server.routes.transcription.VideoTranscriber") as mock:
             mock_instance = mock.return_value
             mock_instance.transcribe.return_value = "[00:00 - 00:05] Test"
             mock_instance.detect_language.return_value = "en"
@@ -103,9 +103,9 @@ class TestWebSocketConnection:
 
     def test_websocket_includes_translation_info(self, client):
         """WebSocket should include translation info when job has translated_to field."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock:
+        with patch("vtt_server.routes.transcription.VideoTranscriber") as mock:
             mock_instance = mock.return_value
             mock_instance.transcribe.return_value = "[00:00 - 00:05] Test"
             mock_instance.detect_language.return_value = "en"
@@ -137,7 +137,7 @@ class TestWebSocketProgressUpdates:
         """WebSocket should report when job starts processing."""
         import time
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock:
+        with patch("vtt_server.routes.transcription.VideoTranscriber") as mock:
             # Slow transcription to ensure we catch processing state
             def slow_transcribe(*_args):
                 time.sleep(0.3)
@@ -163,7 +163,7 @@ class TestWebSocketProgressUpdates:
 
     def test_websocket_includes_progress_percentage(self, client):
         """WebSocket updates should include progress percentage."""
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -178,9 +178,9 @@ class TestWebSocketProgressUpdates:
 
     def test_websocket_streams_progress_events(self, client):
         """WebSocket should stream detailed progress events."""
-        from vtt_transcribe.api.routes.transcription import _emit_progress
+        from vtt_server.routes.transcription import _emit_progress
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock_vt:
+        with patch("vtt_server.routes.transcription.VideoTranscriber") as mock_vt:
             # Properly configure the mock to avoid MagicMock in job data
             mock_instance = MagicMock()
             mock_instance.transcribe.return_value = "[00:00 - 00:05] Test transcript"
@@ -231,9 +231,9 @@ class TestWebSocketProgressUpdates:
 
     def test_websocket_progress_language_detection(self, client):
         """WebSocket should emit progress for language detection."""
-        from vtt_transcribe.api.routes.transcription import _emit_progress
+        from vtt_server.routes.transcription import _emit_progress
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -245,7 +245,7 @@ class TestWebSocketProgressUpdates:
         _emit_progress(job_id, "Detected language: Spanish", "language")
 
         # Verify progress events are in queue
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         assert "progress_updates" in jobs[job_id]
         queue = jobs[job_id]["progress_updates"]
@@ -268,9 +268,9 @@ class TestWebSocketProgressUpdates:
 
     def test_websocket_progress_translation(self, client):
         """WebSocket should emit progress for translation."""
-        from vtt_transcribe.api.routes.transcription import _emit_progress
+        from vtt_server.routes.transcription import _emit_progress
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -282,16 +282,16 @@ class TestWebSocketProgressUpdates:
         _emit_progress(job_id, "Translation to French complete", "translation")
 
         # Verify progress events are in queue
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         queue = jobs[job_id]["progress_updates"]
         assert queue.qsize() >= 2
 
     def test_websocket_progress_diarization(self, client):
         """WebSocket should emit progress for diarization."""
-        from vtt_transcribe.api.routes.transcription import _emit_progress
+        from vtt_server.routes.transcription import _emit_progress
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -303,16 +303,16 @@ class TestWebSocketProgressUpdates:
         _emit_progress(job_id, "Processing audio for speaker segments", "diarization")
 
         # Verify progress events are in queue
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         queue = jobs[job_id]["progress_updates"]
         assert queue.qsize() >= 2
 
     def test_websocket_progress_error(self, client):
         """WebSocket should emit progress for errors."""
-        from vtt_transcribe.api.routes.transcription import _emit_progress
+        from vtt_server.routes.transcription import _emit_progress
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -323,7 +323,7 @@ class TestWebSocketProgressUpdates:
         _emit_progress(job_id, "Transcription failed: API error", "error")
 
         # Verify error progress event is in queue
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         queue = jobs[job_id]["progress_updates"]
 
@@ -344,9 +344,9 @@ class TestWebSocketProgressUpdates:
 
     def test_emit_progress_with_full_queue(self, client):
         """_emit_progress should handle full queue gracefully."""
-        from vtt_transcribe.api.routes.transcription import _emit_progress
+        from vtt_server.routes.transcription import _emit_progress
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -355,7 +355,7 @@ class TestWebSocketProgressUpdates:
             job_id = response.json()["job_id"]
 
         # Fill the queue (default maxsize is 0, unlimited, so patch it)
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         jobs[job_id]["progress_updates"] = asyncio.Queue(maxsize=2)
 
@@ -369,16 +369,16 @@ class TestWebSocketProgressUpdates:
 
     def test_emit_progress_nonexistent_job(self):
         """_emit_progress should handle nonexistent job gracefully."""
-        from vtt_transcribe.api.routes.transcription import _emit_progress
+        from vtt_server.routes.transcription import _emit_progress
 
         # Should not raise exception
         _emit_progress("nonexistent-job-id", "Test message", "info")
 
     def test_emit_progress_job_without_queue(self, client):
         """_emit_progress should handle job without progress_updates queue."""
-        from vtt_transcribe.api.routes.transcription import _emit_progress, jobs
+        from vtt_server.routes.transcription import _emit_progress, jobs
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -401,7 +401,7 @@ class TestAPIWebsocketsCoverage:
         """Test websocket handling when job doesn't exist or gets deleted (lines 27-28)."""
         from fastapi.testclient import TestClient
 
-        from vtt_transcribe.api import app
+        from vtt_server import app
 
         client = TestClient(app)
 
@@ -419,12 +419,12 @@ class TestAPIWebsocketsCoverage:
         """Test websocket detects status transitions (line 42)."""
         from fastapi.testclient import TestClient
 
-        from vtt_transcribe.api import app
+        from vtt_server import app
 
         client = TestClient(app)
 
         # Create a job via API
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -445,13 +445,13 @@ class TestAPIWebsocketsCoverage:
         """Test websocket general exception handling (lines 58, 60-61)."""
         from fastapi.testclient import TestClient
 
-        from vtt_transcribe.api import app
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server import app
+        from vtt_server.routes.transcription import jobs
 
         client = TestClient(app)
 
         # Create job then make it cause an error
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -480,13 +480,13 @@ class TestAPIWebsocketsCoverageComplete:
         """Test websocket handling when job is deleted (lines 27-28)."""
         from fastapi.testclient import TestClient
 
-        from vtt_transcribe.api import app
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server import app
+        from vtt_server.routes.transcription import jobs
 
         client = TestClient(app)
 
         # Create a job
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -514,11 +514,11 @@ class TestAPIWebsocketsCoverageComplete:
         """Test websocket detects status changes (line 44)."""
         from fastapi.testclient import TestClient
 
-        from vtt_transcribe.api import app
+        from vtt_server import app
 
         client = TestClient(app)
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -535,12 +535,12 @@ class TestAPIWebsocketsCoverageComplete:
         """Test websocket handling of failed status (lines 51-52)."""
         from fastapi.testclient import TestClient
 
-        from vtt_transcribe.api import app
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server import app
+        from vtt_server.routes.transcription import jobs
 
         client = TestClient(app)
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock_vt:
+        with patch("vtt_server.routes.transcription.VideoTranscriber") as mock_vt:
             mock_instance = MagicMock()
             mock_instance.transcribe.side_effect = Exception("Test error")
             mock_instance.detect_language.return_value = "en"
@@ -573,7 +573,7 @@ class TestAPIWebsocketsCoverageComplete:
         """Test websocket exception handling (line 58)."""
         from fastapi.testclient import TestClient
 
-        from vtt_transcribe.api import app
+        from vtt_server import app
 
         client = TestClient(app)
 
@@ -592,7 +592,7 @@ class TestWebsocketEdgeCases:
 
     def test_websocket_with_missing_job(self) -> None:
         """Test websocket with job that doesn't exist (lines 27-28)."""
-        from vtt_transcribe.api import app
+        from vtt_server import app
 
         client = TestClient(app)
 
@@ -607,8 +607,8 @@ class TestWebsocketEdgeCases:
 
     def test_websocket_status_change_loop(self) -> None:
         """Test websocket detects status changes in polling loop (line 42)."""
-        from vtt_transcribe.api import app
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server import app
+        from vtt_server.routes.transcription import jobs
 
         client = TestClient(app)
 
@@ -646,8 +646,8 @@ class TestWebsocketEdgeCases:
 
     def test_websocket_exception_in_send(self) -> None:
         """Test exception handling in websocket loop (line 58)."""
-        from vtt_transcribe.api import app
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server import app
+        from vtt_server.routes.transcription import jobs
 
         client = TestClient(app)
 
@@ -683,8 +683,8 @@ def test_websocket_job_deleted_check() -> None:
     from fastapi import WebSocket
     from starlette.websockets import WebSocketState
 
-    from vtt_transcribe.api.routes.transcription import jobs
-    from vtt_transcribe.api.routes.websockets import websocket_job_updates
+    from vtt_server.routes.transcription import jobs
+    from vtt_server.routes.websockets import websocket_job_updates
 
     # Create mock websocket
     mock_ws = AsyncMock(spec=WebSocket)
@@ -743,8 +743,8 @@ def test_websocket_status_change() -> None:
     from fastapi import WebSocket
     from starlette.websockets import WebSocketState
 
-    from vtt_transcribe.api.routes.transcription import jobs
-    from vtt_transcribe.api.routes.websockets import websocket_job_updates
+    from vtt_server.routes.transcription import jobs
+    from vtt_server.routes.websockets import websocket_job_updates
 
     # Create mock websocket
     mock_ws = AsyncMock(spec=WebSocket)
@@ -803,8 +803,8 @@ def test_websocket_generic_exception() -> None:
     from fastapi import WebSocket, WebSocketDisconnect
     from starlette.websockets import WebSocketState
 
-    from vtt_transcribe.api.routes.transcription import jobs
-    from vtt_transcribe.api.routes.websockets import websocket_job_updates
+    from vtt_server.routes.transcription import jobs
+    from vtt_server.routes.websockets import websocket_job_updates
 
     # Create mock websocket
     mock_ws = AsyncMock(spec=WebSocket)
@@ -839,7 +839,7 @@ class TestWebSocketHelperFunctions:
 
     def test_build_status_message_with_detected_language(self) -> None:
         """Should include detected_language when present."""
-        from vtt_transcribe.api.routes.websockets import _build_status_message
+        from vtt_server.routes.websockets import _build_status_message
 
         current_job = {
             "job_id": "test-123",
@@ -854,7 +854,7 @@ class TestWebSocketHelperFunctions:
 
     def test_build_status_message_without_detected_language(self) -> None:
         """Should handle missing detected_language (line 71-72)."""
-        from vtt_transcribe.api.routes.websockets import _build_status_message
+        from vtt_server.routes.websockets import _build_status_message
 
         current_job = {
             "job_id": "test-123",
@@ -872,7 +872,7 @@ class TestWebSocketHelperFunctions:
     @pytest.mark.asyncio
     async def test_wait_for_progress_timeout(self) -> None:
         """Should return None on timeout."""
-        from vtt_transcribe.api.routes.websockets import _wait_for_progress_or_timeout
+        from vtt_server.routes.websockets import _wait_for_progress_or_timeout
 
         queue: asyncio.Queue = asyncio.Queue()
 
@@ -884,7 +884,7 @@ class TestWebSocketHelperFunctions:
     @pytest.mark.asyncio
     async def test_wait_for_progress_gets_item(self) -> None:
         """Should get item from queue (line 91)."""
-        from vtt_transcribe.api.routes.websockets import _wait_for_progress_or_timeout
+        from vtt_server.routes.websockets import _wait_for_progress_or_timeout
 
         queue: asyncio.Queue = asyncio.Queue()
         test_item = {"test": "data"}
@@ -898,7 +898,7 @@ class TestWebSocketHelperFunctions:
     @pytest.mark.asyncio
     async def test_drain_progress_queue_empty(self) -> None:
         """Should handle empty queue gracefully (line 110-111)."""
-        from vtt_transcribe.api.routes.websockets import _drain_progress_queue
+        from vtt_server.routes.websockets import _drain_progress_queue
 
         mock_ws = MagicMock()
         mock_ws.send_json = AsyncMock()
@@ -916,7 +916,7 @@ class TestTranscriptionProgressEmit:
 
     def test_emit_progress_queue_full_logs_warning(self) -> None:
         """Should log warning when progress queue is full."""
-        from vtt_transcribe.api.routes.transcription import _emit_progress, jobs
+        from vtt_server.routes.transcription import _emit_progress, jobs
 
         # Create a job with a full queue
         job_id = "test-job-123"
@@ -935,7 +935,7 @@ class TestTranscriptionProgressEmit:
 
     def test_emit_progress_exception_handling(self) -> None:
         """Should handle other exceptions gracefully (lines 47-49)."""
-        from vtt_transcribe.api.routes.transcription import _emit_progress, jobs
+        from vtt_server.routes.transcription import _emit_progress, jobs
 
         # Create a job with a mock queue that raises an exception
         job_id = "test-job-456"
@@ -956,7 +956,7 @@ class TestTranscriptionProgressEmit:
 
     def test_build_status_message_with_translated_to(self) -> None:
         """Should include translated_to when present."""
-        from vtt_transcribe.api.routes.websockets import _build_status_message
+        from vtt_server.routes.websockets import _build_status_message
 
         current_job = {
             "job_id": "test-123",

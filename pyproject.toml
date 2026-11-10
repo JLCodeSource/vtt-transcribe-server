@@ -1,48 +1,28 @@
 [project]
-name = "vtt-transcribe"
-version = "0.3.1"
-description = "Transcribe video and audio files to text using OpenAI Whisper with optional speaker diarization"
+name = "vtt-transcribe-server"
+version = "0.1.0"
+description = "Private FastAPI server (users, OAuth, DB, job API) built on the vtt-transcribe transcription package"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "BSD-3-Clause"}
+license = {text = "Proprietary"}
 authors = [
     {name = "JLCodeSource", email = "JLCodeSource@gmail.com"}
 ]
-keywords = ["transcription", "whisper", "openai", "video", "audio", "speech-to-text", "diarization", "subtitles"]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
-    "Intended Audience :: Developers",
-    "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: BSD License",
-    "Operating System :: OS Independent",
+    "Private :: Do Not Upload",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
-    "Topic :: Multimedia :: Sound/Audio :: Speech",
-    "Topic :: Multimedia :: Video",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Typing :: Typed",
 ]
 dependencies = [
-    "moviepy>=2.2.1",
-    "openai>=2.15.0",
-    "python-dotenv>=1.0.0",
-]
-
-[project.urls]
-Homepage = "https://github.com/JLCodeSource/vtt-transcribe"
-Repository = "https://github.com/JLCodeSource/vtt-transcribe"
-Issues = "https://github.com/JLCodeSource/vtt-transcribe/issues"
-Changelog = "https://github.com/JLCodeSource/vtt-transcribe/blob/main/docs/CHANGELOG.md"
-
-[project.optional-dependencies]
-api = [
+    # Core transcription package. PyPI 0.3.1 (Feb 2026) predates logging_config/translator
+    # and torch 2.15, so we pin the public repo at a commit. Switch to "vtt-transcribe>=X"
+    # once a release containing these modules is published.
+    "vtt-transcribe @ git+https://github.com/JLCodeSource/vtt-transcribe@1cadf06c8529e63177a5f0a230772db91916aa1b",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
-    "python-multipart>=0.0.20",  # For file upload support
+    "python-multipart>=0.0.20",  # File upload support
     "sqlalchemy[asyncio]>=2.0.0",
     "asyncpg>=0.29.0",  # PostgreSQL async driver
     "aiosqlite>=0.19.0",  # SQLite async driver
@@ -53,50 +33,28 @@ api = [
     "email-validator>=2.0.0",  # Pydantic email validation
     "authlib>=1.3.0",  # OAuth provider integration
     "httpx>=0.27.0",  # HTTP client for OAuth
-    "itsdangerous>=2.1.0",  # Session cookie signing (required by SessionMiddleware for OAuth CSRF)
+    "itsdangerous>=2.1.0",  # Session cookie signing (SessionMiddleware / OAuth CSRF)
 ]
+
+[project.optional-dependencies]
+# Speaker diarization: forwards to the core's extra (pyannote.audio, torch, torchaudio, torchcodec)
 diarization = [
-    "pyannote.audio>=4.0.0",  # 4.x uses torchcodec for audio I/O (actively maintained)
-    "torch==2.15.0",  # pyannote.audio 4.x runs fine on 2.15 (CPU and CUDA); older torch has open security advisories
-    "torchaudio==2.11.1",  # Required by pyannote.audio 4.x (resampling); 2.11.1 is the last torchaudio release, resampling verified with torch 2.15
-    "torchcodec==0.13.0",  # Required by pyannote.audio 4.x for audio decoding; 0.14+ fail to load against torch 2.15
-]
-dev = [
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "pytest-asyncio>=0.21.0",  # For async test support
-    "mypy>=1.5.0",
-    "ruff>=0.1.0",
-    "pre-commit>=3.4.0",
-    "httpx>=0.27.0",  # For TestClient support
-]
-build = [
-    "build>=1.0.0",
-    "twine>=4.0.0",
-    "hatchling>=1.18.0",
+    "vtt-transcribe[diarization] @ git+https://github.com/JLCodeSource/vtt-transcribe@1cadf06c8529e63177a5f0a230772db91916aa1b",
 ]
 
 [project.scripts]
-vtt = "vtt_transcribe.main:main"
+vtt-server = "vtt_server.server:main"
 
 [dependency-groups]
 dev = [
-    "build>=1.0.0",
     "coverage>=7.13.2",
-    "hatch>=1.9.0",
     "mypy>=1.19.1",
-    "nox[pbs]>=2024.4.15",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "ruff>=0.14.14",
-    "pre-commit>=3.4.0",
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.34.0",
-    "python-multipart>=0.0.20",
-    "httpx>=0.27.0",
     "types-PyYAML>=6.0.0",
-    "pyright>=1.1.408",
+    "pyyaml>=6.0",
 ]
 
 [tool.uv]
@@ -107,26 +65,21 @@ override-dependencies = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-filterwarnings = [
-    "ignore::UserWarning:pyannote.audio.core.io",
-    "ignore::UserWarning:pyannote.audio.models.blocks.pooling",
-]
-markers = [
-    "integration: marks tests as integration tests (require external services/models)",
-    "diarization: marks tests that require diarization dependencies (torch, pyannote)",
-]
+testpaths = ["tests"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
-packages = ["vtt_transcribe"]
+packages = ["vtt_server"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "/vtt_transcribe",
+  "/vtt_server",
   "/tests",
   "/README.md",
-  "/LICENSE",
 ]

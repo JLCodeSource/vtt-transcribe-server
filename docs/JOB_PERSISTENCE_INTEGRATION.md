@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The user management system includes a `TranscriptionJob` model for storing job history and transcripts in the database. However, the actual transcription workflow (in `vtt_transcribe/api/routes/transcription.py`) currently only tracks jobs in-memory and does not persist them to the database.
+The user management system includes a `TranscriptionJob` model for storing job history and transcripts in the database. However, the actual transcription workflow (in `vtt_server/routes/transcription.py`) currently only tracks jobs in-memory and does not persist them to the database.
 
 ## What's Implemented
 
@@ -34,7 +34,7 @@ When transcription completes, the transcript is not saved to the `TranscriptionJ
 
 ### 1. Create Job on Transcription Start
 
-**File**: `vtt_transcribe/api/routes/transcription.py`
+**File**: `vtt_server/routes/transcription.py`
 
 **Location**: In `transcribe_file()` endpoint after generating `job_id`
 
@@ -58,7 +58,7 @@ if current_user:  # Only if user is authenticated
 
 ### 2. Update Status to "processing"
 
-**File**: `vtt_transcribe/api/routes/transcription.py`
+**File**: `vtt_server/routes/transcription.py`
 
 **Location**: In background transcription task before calling `VideoTranscriber.transcribe()`
 
@@ -76,7 +76,7 @@ if current_user:
 
 ### 3. Store Transcript on Completion
 
-**File**: `vtt_transcribe/api/routes/transcription.py`
+**File**: `vtt_server/routes/transcription.py`
 
 **Location**: In background transcription task after successful transcription
 
@@ -96,7 +96,7 @@ if current_user:
 
 ### 4. Handle Errors
 
-**File**: `vtt_transcribe/api/routes/transcription.py`
+**File**: `vtt_server/routes/transcription.py`
 
 **Location**: In background transcription task exception handlers
 
@@ -116,7 +116,7 @@ if current_user:
 
 ### 5. WebSocket Integration
 
-Similar changes needed in `vtt_transcribe/api/routes/websockets.py` for the WebSocket transcription workflow.
+Similar changes needed in `vtt_server/routes/websockets.py` for the WebSocket transcription workflow.
 
 ## Testing Requirements
 

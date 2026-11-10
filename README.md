@@ -1,458 +1,95 @@
-# vtt-transcribe
+# vtt-transcribe-server
 
-Takes a video file, extracts or splits the audio, and transcribes the audio to text
-using OpenAI's Whisper model (via the `openai` Python client).
+Private server side of **vtt-transcribe**: FastAPI API (`vtt_server/`), users / OAuth / DB, the Svelte 5 web
+app (`frontend/`), and Docker / docker-compose deployment.
 
-This repository provides a small CLI tool (`vtt`) and a set of helper
-functions for handling audio extraction, chunking large audio files, and
-formatting verbose JSON transcripts into readable timestamped output.
+This repo was extracted (with full git history) from
+[JLCodeSource/vtt-transcribe](https://github.com/JLCodeSource/vtt-transcribe).
 
-## Features
- - Extract audio from video files (writes `.mp3` by default) or transcribe audio directly (.mp3, .wav, .ogg, .m4a)
- - Automatic language detection using Whisper API
- - Manual language override via `--language` flag for improved transcription accuracy
- - Translation support: translate transcripts to any language using `--translate-to`
- - Prefer minute-aligned chunk durations for large audio files exceeding 25MB API limit
- - Transcribe audio via OpenAI's Whisper API with `verbose_json` response format
- - Speaker diarization using pyannote.audio to identify and label speakers in transcripts
- - Format transcripts into human-friendly lines: `[HH:MM:SS - HH:MM:SS] text` with optional speaker labels
- - Shift chunk-local timestamps into absolute timeline when chunking
- - Keep or delete intermediate audio/chunk files based on flags
- - Interactive speaker review to rename/merge speakers after diarization
+## Three-repo layout
 
-## Dependencies
- - Python 3.11+
+| Repo | Visibility | Contents |
+|------|-----------|----------|
+| `vtt-transcribe` | public | Python CLI/library: Whisper transcription, chunking, diarization, translator. Published to PyPI + Docker Hub. |
+| `vtt-transcribe-server` (this repo) | private | FastAPI API, users/OAuth/DB, Svelte web app, Docker/compose. **Depends on** `vtt-transcribe`. |
+| `vtt-transcribe-web` | — | Separate static (BYOK/WASM) web app. |
 
- Compatibility:
- - Core package supports Python 3.11 through 3.14 (tests run on 3.11–3.14).
- - Speaker diarization extras require specific native wheels (torch==2.8.0) and pyannote packages that currently provide prebuilt wheels up to Python 3.13. Therefore, diarization is officially supported up to Python 3.13.
- - If you run on Python 3.14 and need diarization, you may need to build torch from source or use a compatible wheel; this is not recommended for general users.
+The dependency is one-way: the server imports `VideoTranscriber`, `AudioTranslator`, `get_logger` and
+`__version__` from `vtt_transcribe`; the core never imports the server.
 
- - **ffmpeg** (required for video/audio processing via moviepy)
- - moviepy (audio/video helpers)
- - openai (Whisper API client)
- - pyannote.audio (speaker diarization, optional - requires [diarization] extra)
- - torch (required for pyannote.audio)
- - Dev / test: pytest, mypy, ruff, pre-commit, coverage, python-dotenv
+The server package is named **`vtt_server`** (it used to be `vtt_transcribe.api`). A regular package named
+`vtt_transcribe` cannot share its namespace with the installed core, hence the rename.
 
-## Prerequisites
- - **ffmpeg must be installed** on your system for video/audio processing
- - **Recommended approach**: Use the provided `.devcontainer` which includes:
-   - Pre-configured ffmpeg installation
-   - GPU support for diarization (if host has NVIDIA GPU + drivers)
-   - All Python dependencies
-   - VS Code extensions and settings
- - **Manual setup**: If not using devcontainer, ensure ffmpeg is installed:
-   - Ubuntu/Debian: `sudo apt-get install ffmpeg`
-   - macOS: `brew install ffmpeg`
-   - Windows: Download from https://ffmpeg.org/download.html
+## How the core is consumed
 
-## Speaker Diarization
- - The speaker diarization feature (`--diarize`) identifies and labels different speakers in audio
- - **Requirements:**
-   - Hugging Face token (set `HF_TOKEN` environment variable or use `--hf-token` flag)
-   - **Accept pyannote model terms**: Before using diarization, you must accept the terms for the following models on Hugging Face:
-      - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) ⭐ **Required** - main diarization model
-      - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0) ⭐ **Required** - speaker segmentation
-      - [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1) ⭐ **Required** - community model
-      - [pyannote/wespeaker-voxceleb-resnet34-LM](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM) - speaker embedding (auto-downloaded)
-      - **How to accept terms**: Visit each ⭐ marked model page while logged into Hugging Face and click "Accept" on the terms
-      - Without accepting terms, you'll get authentication errors when attempting diarization
-   - Minimum audio duration: ~10 seconds (shorter files may fail)
- - **GPU Support (Optional):**
-   - Can leverage CUDA GPUs for faster processing (10-100x speedup)
-   - By default, uses `--device auto` which automatically detects and uses CUDA if available
-   - To explicitly control device selection, use `--device cuda` or `--device cpu`
-   - .devcontainer handles prerequisites for GPU support
-   - Prerequisites for GPU support:
-     - NVIDIA GPU with CUDA support
-     - NVIDIA drivers installed on the host system
-     - `nvidia-container-toolkit` installed on the host (for Docker/devcontainer)
-   - If GPU is not available or fails, automatically falls back to CPU
+PyPI `vtt-transcribe` 0.3.1 (Feb 2026) is too old: it lacks `vtt_transcribe.logging_config` and
+`vtt_transcribe.translator`, and predates the torch 2.15 / Python >=3.11 move. So `pyproject.toml` pins the public
+GitHub repo at a commit:
 
-
-
-## Installation
-
-### From PyPI (Recommended)
-
-```bash
-# Basic installation (transcription only)
-pip install vtt-transcribe
-
-# OR: With diarization support
-pip install vtt-transcribe[diarization]
-
-# Using uv (faster)
-uv pip install vtt-transcribe
-uv pip install vtt-transcribe[diarization]
+```
+vtt-transcribe @ git+https://github.com/JLCodeSource/vtt-transcribe@1cadf06c8529e63177a5f0a230772db91916aa1b
 ```
 
-> **Note:** Installing with `[diarization]` extras adds large dependencies such as PyTorch and `pyannote.audio`, which significantly increases the download and install size of your environment. The actual diarization model weights are typically downloaded at runtime (e.g., via the Hugging Face cache) on first use, so overall disk usage for diarization (dependencies + cached models) can reach several GB. Only install these extras if you need speaker identification features.
+Once a core release containing these modules is on PyPI, replace it with `vtt-transcribe>=X.Y` (and the same for the
+`diarization` extra) and re-run `uv lock`. Bump the pin deliberately when you need newer core behaviour.
 
-### Using Docker (Alternative)
+## Run locally
 
-Docker images are available on Docker Hub and GitHub Container Registry in three variants:
-
-| Image | Tag | Size | Arch | Description |
-|-------|-----|------|------|-------------|
-| **Base** | `latest` | ~150 MB | amd64, arm64 | Transcription only, lightweight |
-| **Diarization** | `diarization` | ~700 MB | amd64 only | Speaker diarization, PyTorch CPU, torchcodec 0.7 |
-| **Diarization GPU** | `diarization-gpu` | ~6.5 GB | amd64 only | GPU-accelerated diarization, CUDA 12.8 |
-
-> **Compatibility note:** Diarization images pin `torch==2.8.0` with `torchcodec==0.7.0` per the [torchcodec compatibility table](https://github.com/pytorch/torchcodec#installing-torchcodec). The CPU image uses the PyTorch CPU index to keep the image small (~700 MB vs ~4 GB with bundled CUDA).
+Requirements: Python >=3.11, [uv](https://docs.astral.sh/uv/), git, ffmpeg (for real transcription).
 
 ```bash
-# Pull from Docker Hub (base image)
-docker pull jlcodesource/vtt-transcribe:latest
-
-# Pull diarization image (CPU-only, amd64 only, ~700 MB)
-docker pull jlcodesource/vtt-transcribe:diarization
-
-# Pull diarization GPU image (CUDA 12.8, amd64 only, ~6.5 GB)
-docker pull jlcodesource/vtt-transcribe:diarization-gpu
-
-# OR: Pull from GitHub Container Registry
-docker pull ghcr.io/jlcodesource/vtt-transcribe:latest
-docker pull ghcr.io/jlcodesource/vtt-transcribe:diarization
-docker pull ghcr.io/jlcodesource/vtt-transcribe:diarization-gpu
-
-# Use stdin mode to pipe audio/video data (recommended for Docker)
-# Supports video formats (MP4, AVI, WebM) and audio formats (MP3, WAV, OGG)
-cat input.mp4 | docker run -i -e OPENAI_API_KEY="your-key" jlcodesource/vtt-transcribe:latest
-
-# Or redirect to save transcript to file
-cat input.mp4 | docker run -i -e OPENAI_API_KEY="your-key" jlcodesource/vtt-transcribe:latest > transcript.txt
-
-# With diarization (use diarization image, requires HF_TOKEN)
-# Note: Interactive review (--no-review-speakers) automatically disabled in stdin mode
-cat input.mp4 | docker run -i -e OPENAI_API_KEY="your-key" -e HF_TOKEN="your-hf-token" jlcodesource/vtt-transcribe:diarization --diarize
-
-# GPU support for diarization (requires nvidia-docker + :diarization-gpu image)
-cat input.mp4 | docker run -i --gpus all -e OPENAI_API_KEY="your-key" -e HF_TOKEN="your-hf-token" jlcodesource/vtt-transcribe:diarization-gpu --diarize --device cuda
-```
-
-**Docker Stdin Mode Limitations:**
-- Volume mounting (`-v`) is not supported — use stdin/stdout instead
-- Interactive speaker review (`--review-speakers`) is unavailable in stdin mode (auto-disabled)
-- For diarization workflows, speaker labels will be generic (SPEAKER_00, SPEAKER_01, etc.)
-- Cannot use `-s/--save-transcript`, `-o/--output-audio`, `--apply-diarization`, or `--scan-chunks` flags
-
-**Docker Image Tags:**
-- `latest` — Latest stable release (base, transcription-only)
-- `diarization` — Latest release with diarization support (CPU-only, amd64 only)
-- `diarization-gpu` — Latest release with diarization + CUDA GPU support (amd64 only)
-- `0.3.1` — Specific version tags (PEP 440 format)
-
-For more Docker usage patterns and troubleshooting, see [Docker Registry Documentation](docs/DOCKER_REGISTRY.md).
-
-### Using Docker Compose (Full Stack)
-
-For local development with the complete API, worker, and database stack:
-
-```bash
-# 1. Copy environment template
+uv sync                         # server + dev deps (core installed from the pinned git commit)
+uv sync --extra diarization     # optional: pyannote/torch via vtt-transcribe[diarization] (large)
 cp .env.example .env
-
-# 2. Edit .env - set required secrets/variables (OPENAI_API_KEY, SECRET_KEY, POSTGRES_PASSWORD)
-# 3. Start services
-docker compose up -d
-
-# 4. Access API at http://localhost:8000
-# API docs: http://localhost:8000/docs
+uv run python scripts/generate_secrets.py   # fill SECRET_KEY / ENCRYPTION_KEY / SESSION_SECRET in .env
+uv run vtt-server               # dev server on :8000 (docs at /docs)
 ```
 
-See [Docker Compose Guide](docs/DOCKER_COMPOSE.md) for complete setup instructions, architecture details, and troubleshooting.
-
-### Web Frontend (Development)
-
-A modern web frontend built with Svelte + Vite + TypeScript is available for local development:
+Full stack (Postgres + API + worker, `--profile frontend` adds the web app): see
+[docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md).
 
 ```bash
-# Start all services including frontend
-docker compose --profile frontend up
-
-# Frontend will be available at http://localhost:3000
-# Backend API at http://localhost:8000
+docker compose up -d --build
+docker compose --profile frontend up -d --build
 ```
 
-**Frontend Features:**
-- Drag-and-drop file upload for video/audio files
-- Real-time transcription progress via WebSocket
-- Interactive transcript viewer with speaker labels
-- Search and filter by speaker
-- Download transcripts in TXT, VTT, or SRT formats
+The `Dockerfile` has `api` and `worker` targets; it `uv sync`s the lockfile (git is needed in the builder to fetch the
+core). Build with diarization: `--build-arg SYNC_ARGS="--extra diarization"`.
 
-**Frontend Development:**
-```bash
-cd frontend
-npm install
-npm run dev  # Starts dev server on port 3000 with hot reload
-npm test     # Run test suite
-npm run build  # Build for production
-```
-
-See [frontend/README.md](frontend/README.md) for detailed frontend documentation.
-
-## Upgrading from 0.2.0
-
-**Important:** Version 0.3.0+ introduces optional dependencies for speaker diarization. If you are upgrading from 0.2.0 and want to use diarization features, you need to explicitly install the `[diarization]` extra. See the [CHANGELOG](docs/CHANGELOG.md) for detailed upgrade instructions.
-
-## Development Quick Start
-
-This section is for contributors and developers who want to build and run the project from source.
-
-### Option 1: Using devcontainer (Recommended)
-1. Open project in VS Code
-2. Install "Dev Containers" extension
-3. Click "Reopen in Container" when prompted (or use Command Palette: "Dev Containers: Reopen in Container")
-4. The devcontainer includes ffmpeg, GPU support, and all dependencies pre-configured
-
-### Option 2: Manual setup
-
-1. Ensure ffmpeg is installed on your system (see Prerequisites above)
-
-2. Run the installer which installs `uv` and creates the project's virtual environment:
+## Tests and lint
 
 ```bash
-# Basic install (transcription only, no diarization)
-make install
-
-# OR: Install with diarization support (includes torch + pyannote.audio)
-make install-diarization
+uv run pytest                   # backend (tests/test_api, docker-compose, generate_secrets)
+uv run ruff check .
+cd frontend && npm ci && npm run test        # frontend unit tests (Vitest)
+cd frontend && npm run test:e2e              # Playwright E2E (needs the backend running)
 ```
 
-3. Set up environment variables (see [Setup Environment Variables](#setup-environment-variables) below)
-
-4. Run tests to verify your setup:
+No make/uv/node on the host? Use containers:
 
 ```bash
-make test
+docker run --rm -v "$PWD":/w -w /w -e UV_PROJECT_ENVIRONMENT=/opt/venv python:3.12-slim bash -c \
+  'apt-get update -qq && apt-get install -y -qq git && pip install -q uv && uv sync --frozen && /opt/venv/bin/pytest -q -p no:cacheprovider && /opt/venv/bin/ruff check .'
+docker run --rm -v "$PWD/frontend":/w -w /w node:22-slim bash -c 'npm ci && npm run test'
 ```
 
-## Setup Environment Variables
+## CI
 
-You can set environment variables in your shell or create a `.env` file in your project directory:
+GitHub Actions are **disabled** on this private repo to keep cost at zero. `.github/workflows/frontend-ci.yml`
+(path-filtered) is kept for when Actions are enabled; it does nothing until then.
 
-**Option 1: Shell environment**
-```bash
-export OPENAI_API_KEY="your-openai-key"
-export HF_TOKEN="your-huggingface-token"  # Only needed for --diarize
-```
+## Judgment calls in the extraction
 
-**Option 2: .env file (automatically loaded)**
-```bash
-# Create a .env file in your project directory
-echo 'OPENAI_API_KEY="your-openai-key"' > .env
-echo 'HF_TOKEN="your-huggingface-token"' >> .env
-
-# For publishing to PyPI (developers only)
-echo 'TWINE_USERNAME=__token__' >> .env
-echo 'TESTPYPI_API_TOKEN=your-testpypi-token' >> .env
-echo 'PYPI_API_TOKEN=your-pypi-token' >> .env
-```
-
-The tool will automatically load variables from `.env` if the file exists.
-
-**Publishing Environment Variables (Developers Only):**
-- `TWINE_USERNAME`: Should always be `__token__` for PyPI token authentication
-- `TESTPYPI_API_TOKEN`: Your TestPyPI API token
-- `PYPI_API_TOKEN`: Your PyPI API token
-- These are only needed if you're building and publishing packages using `make build`, `make publish-test`, or `make publish`
-
-## Usage
-
-### Command Line
-
-```bash
-# Basic transcription (auto-detects language)
-vtt path/to/input.mp4
-
-# Manual language specification
-vtt path/to/input.mp4 --language es
-
-# Transcribe and translate
-vtt path/to/input.mp4 --translate-to French
-
-# With speaker diarization
-vtt path/to/input.mp4 --diarize
-
-# Diarization with translation
-vtt path/to/input.mp4 --diarize --translate-to Spanish
-
-# Direct audio transcription
-vtt path/to/audio.mp3 --diarize
-
-# Using uv run (if installed from source)
-uv run vtt path/to/input.mp4
-```
-
-#### Stdin/Stdout Mode
-
-For containerized or pipeline usage, vtt supports stdin/stdout mode with both audio and video files:
-
-```bash
-# Pipe audio directly to vtt (outputs transcript to stdout)
-cat audio.mp3 | vtt
-
-# Pipe video directly to vtt (supports MP4, AVI, WebM, etc.)
-cat video.mp4 | vtt
-
-# With Docker (video support)
-cat video.mp4 | docker run -i -e OPENAI_API_KEY="$OPENAI_API_KEY" jlcodesource/vtt-transcribe:latest
-
-# With diarization in Docker (--no-review-speakers auto-enabled)
-cat video.mp4 | docker run -i \
-  -e OPENAI_API_KEY="$OPENAI_API_KEY" \
-  -e HF_TOKEN="$HF_TOKEN" \
-  jlcodesource/vtt-transcribe:diarization --diarize
-
-# In a pipeline
-cat audio.mp3 | vtt > transcript.txt
-
-# Process and save
-cat recording.mp3 | vtt | tee transcript.txt | grep "SPEAKER_00"
-```
-
-**Notes:**
-- Stdin mode is auto-detected when input is piped (non-TTY)
-- Output goes to stdout instead of saving to file
-- The `-s/--save-transcript` and `-o/--output-audio` flags are incompatible with stdin mode
-- **Diarization automatically enables `--no-review-speakers` in stdin mode** (interactive speaker review requires TTY)
-
-### CLI options
-
-**Input/Output:**
- - `input_file`: positional path to the input video or audio file (.mp4, .mp3, .wav, .ogg, .m4a)
- - `-k, --api-key`: OpenAI API key (or set `OPENAI_API_KEY` env var)
- - `-o, --output-audio`: path for extracted audio file (defaults to input name with `.mp3`; not allowed if input is already audio)
- - `-s, --save-transcript`: path to save the transcript (will ensure `.txt` extension)
-
-**Processing Options:**
- - `-f, --force`: re-extract audio even if it already exists
- - `--delete-audio`: delete audio files after transcription (default: keep them)
- - `--scan-chunks`: when input is a chunk file (e.g., `audio_chunk0.mp3`), detect and process all sibling chunks in order
-
-**Translation Options:**
- - `--language LANG`: manually specify source language code (e.g., 'en', 'es', 'fr') to override automatic detection
- - `--translate`: translate audio to English using OpenAI Whisper translations API
- - `--translate-to LANG`: translate transcript to target language (e.g., 'Spanish', 'French') after transcription
-
-**Diarization Options:**
- - `--diarize`: enable speaker diarization (requires `HF_TOKEN` and model access)
- - `--hf-token`: Hugging Face token for pyannote models (or set `HF_TOKEN` env var)
- - `--device`: device for diarization (`auto`, `cuda`/`gpu`, or `cpu`; default: `auto`)
- - `--diarize-only`: run diarization on existing audio without transcription
- - `--apply-diarization PATH`: apply diarization to an existing transcript file
- - `--no-review-speakers`: skip interactive speaker review (default: review is enabled)
-
-### Makefile targets
- - `make install` — installs `uv` and basic dependencies (transcription only, no diarization)
- - `make install-diarization` — installs `uv` and all dependencies including diarization support
- - `make test` — runs the test suite (`pytest`)
- - `make test-integration` — runs only integration tests
- - `make ruff-check` — runs `ruff check .`
- - `make ruff-fix` — runs `ruff format .` (autoformat where supported)
- - `make mypy` — runs `mypy .` for static typing checks
- - `make lint` — runs both `ruff` and `mypy` (alias for `ruff-check mypy`)
- - `make format` — runs the automatic ruff-format step (`ruff format .`)
- - `make clean` — remove compiled python artifacts
- - `make build` — build distribution packages
- - `make publish-test` — publish to TestPyPI (requires `TESTPYPI_API_TOKEN` in environment)
- - `make publish` — publish to PyPI (requires `PYPI_API_TOKEN` in environment)
-
-### Notes on linting and typing
- - `ruff` is configured in `ruff.toml`. The rule `COM812` is disabled to avoid
-	 conflicts with formatters. A per-file ignore exists for tests to allow certain
-	 private-member accesses used in unit tests.
- - Some tests use light mypy `# type: ignore[...]` annotations to accommodate
-	 test doubles and dynamically injected modules.
-
-### Testing
- - Run the full test suite with `make test`. The project includes comprehensive
-	 unit tests for audio extraction, chunking, timestamp formatting, and the CLI
-	 wiring.
- - Note: The project has only been tested on Linux (and WSL2)
-
-### Continuous Integration
- - The repository includes multiple GitHub Actions workflows:
-   - `.github/workflows/ci.yml` — Runs linting and tests on Python 3.11 (push/PR to `main`)
-   - `.github/workflows/publish.yml` — Publishes to PyPI via OIDC on GitHub releases
-   - `.github/workflows/publish-testpypi.yml` — Publishes to TestPyPI on version tags
-   - `.github/workflows/release.yml` — Creates GitHub releases from version tags
-   - `.github/workflows/docker-publish.yml` — Builds and publishes Docker images on releases; updates Docker Hub description
-   - `.github/workflows/docker-build-test.yml` — Validates base Dockerfile on push/PR to `main`
-   - `.github/workflows/docker-build-test-diarization.yml` — Validates diarization Dockerfile (manual trigger)
-   - `.github/workflows/docker-build-test-diarization-gpu.yml` — Validates GPU diarization Dockerfile (manual trigger)
-
-### Acknowledgements
- - This project was developed with test-driven iterations and linting guidance.
- - Parts of the implementation and assistance during development were produced
-	 with help from GitHub Copilot.
-
-### Files of interest
-
- **Source:**
- - [vtt_transcribe/main.py](vtt_transcribe/main.py) — CLI entry point and stdin handling
- - [vtt_transcribe/cli.py](vtt_transcribe/cli.py) — CLI argument parsing
- - [vtt_transcribe/handlers.py](vtt_transcribe/handlers.py) — Command handlers for transcription workflows
- - [vtt_transcribe/transcriber.py](vtt_transcribe/transcriber.py) — Whisper API interaction
- - [vtt_transcribe/audio_manager.py](vtt_transcribe/audio_manager.py) — Audio extraction and management
- - [vtt_transcribe/audio_chunker.py](vtt_transcribe/audio_chunker.py) — Audio chunking for large files
- - [vtt_transcribe/diarization.py](vtt_transcribe/diarization.py) — Speaker diarization using pyannote
- - [vtt_transcribe/transcript_formatter.py](vtt_transcribe/transcript_formatter.py) — Transcript formatting and speaker labeling
- - [vtt_transcribe/dependencies.py](vtt_transcribe/dependencies.py) — Runtime dependency checks (ffmpeg)
-
- **Tests:**
- - [tests/test_main.py](tests/test_main.py) — Main module and stdin mode tests
- - [tests/test_handlers.py](tests/test_handlers.py) — Handler tests
- - [tests/test_cli.py](tests/test_cli.py) — CLI argument parsing tests
- - [tests/test_transcriber.py](tests/test_transcriber.py) — Transcriber tests
- - [tests/test_audio_manager.py](tests/test_audio_manager.py) — Audio management tests
- - [tests/test_audio_chunker.py](tests/test_audio_chunker.py) — Audio chunking tests
- - [tests/test_diarization.py](tests/test_diarization.py) — Diarization tests
- - [tests/test_transcript_formatter.py](tests/test_transcript_formatter.py) — Transcript formatter tests
- - [tests/test_stdin_mode.py](tests/test_stdin_mode.py) — Stdin/stdout mode tests
- - [tests/smoke/](tests/smoke/) — BATS smoke tests for Docker integration
-
- **Config & Docs:**
- - [CHANGELOG.md](docs/CHANGELOG.md) — Version history and upgrade instructions
- - [pyproject.toml](pyproject.toml) — Package metadata and dependencies
- - [Makefile](Makefile) — Convenience commands for dev tooling
- - [ruff.toml](ruff.toml) — Ruff linter configuration
- - [noxfile.py](noxfile.py) — Nox multi-version test configuration
- - [Dockerfile](Dockerfile) — Base Docker image
- - [Dockerfile.diarization](Dockerfile.diarization) — CPU diarization Docker image
- - [Dockerfile.diarization-gpu](Dockerfile.diarization-gpu) — GPU diarization Docker image
- - [.pre-commit-config.yaml](.pre-commit-config.yaml) — Pre-commit hooks for formatting/linting
-
-### Contributing
- - Please run `make format` and `make lint` before submitting a PR.
- - Run `make test` to ensure all tests pass locally.
- - This project uses **bd (beads)** for issue tracking. Run `bd prime` for workflow context.
- - See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed development setup and workflow.
-
-## Building and Publishing (For Maintainers)
-
-The project uses Hatch as the build system. Build artifacts can be created and tested locally:
-
-```bash
-# Install build dependencies
-make install-build
-
-# Build distribution packages (creates dist/*.whl and dist/*.tar.gz)
-make build
-
-# Test publishing to TestPyPI
-make publish-test
-
-# Production publish to PyPI (via GitHub Actions on release)
-# Tag a release: git tag v0.3.1 && git push origin v0.3.1
-# GitHub release is created automatically by .github/workflows/release.yml
-```
-
-For complete build and publish workflow documentation, see [CONTRIBUTING.md](docs/CONTRIBUTING.md).
-
-### License
- - See the `LICENSE` file in the repository root.
-
+- Dropped core-only: CLI/transcriber/chunker/diarization/handlers/formatter/translator modules, CLI tests and smoke
+  tests, sample media, `Dockerfile.diarization*` and the `cli` Docker target, PyPI/Docker-Hub/release/nox workflows,
+  release/PyPI/changelog/registry docs, `noxfile.py`, devcontainer, beads tracker, Copilot/AGENTS instructions,
+  pre-commit hooks, dependabot config.
+- `docs/USER_SETUP_GUIDE.md` (despite the name, it is a PyPI-publishing guide) was **not** kept: it belongs to the core.
+- Kept `docs/DOCKER_SETUP.md` (compose-based) alongside `docs/DOCKER_COMPOSE.md`.
+- Server Python base image moved from 3.13 to 3.12-slim; `.python-version` is 3.12.
+- `api` extra became normal dependencies; `dev`/`build` extras folded into the `dev` dependency group (no build/publish
+  tooling: the package is not published).
+- `vtt_server/routes/health.py` and `app.py` still report the **core** `__version__`.
+- The Postgres DB/user names (`vtt_transcribe`, `vtt_user`) and the `vtt-transcribe-*` container names were left
+  unchanged to avoid breaking existing deployments/volumes.
+- E2E (Playwright) tests were not run locally (need browsers); backend and frontend unit tests were.

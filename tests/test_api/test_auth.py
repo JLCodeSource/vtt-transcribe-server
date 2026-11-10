@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Create test client for FastAPI app."""
-    from vtt_transcribe.api.app import app
+    from vtt_server.app import app
 
     return TestClient(app)
 
@@ -38,7 +38,7 @@ class TestAPIKeyAuthentication:
         """Valid API keys should be accepted."""
         from unittest.mock import patch
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock:
+        with patch("vtt_server.routes.transcription.VideoTranscriber") as mock:
             mock_instance = mock.return_value
             mock_instance.transcribe.return_value = "[00:00 - 00:05] Test"
 
@@ -57,7 +57,7 @@ class TestAPIKeyHeader:
         """API key should be acceptable via X-API-Key header."""
         from unittest.mock import patch
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock:
+        with patch("vtt_server.routes.transcription.VideoTranscriber") as mock:
             mock_instance = mock.return_value
             mock_instance.transcribe.return_value = "[00:00 - 00:05] Test"
 
@@ -73,7 +73,7 @@ class TestAPIKeyHeader:
         """Bearer token authentication should work."""
         from unittest.mock import patch
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock:
+        with patch("vtt_server.routes.transcription.VideoTranscriber") as mock:
             mock_instance = mock.return_value
             mock_instance.transcribe.return_value = "[00:00 - 00:05] Test"
 
@@ -120,7 +120,7 @@ class TestPasswordHashing:
 
     def test_password_hash_generation(self) -> None:
         """Should generate password hashes."""
-        from vtt_transcribe.api.auth import get_password_hash
+        from vtt_server.auth import get_password_hash
 
         password = "testpassword123"
         hashed = get_password_hash(password)
@@ -131,7 +131,7 @@ class TestPasswordHashing:
 
     def test_password_verification_success(self) -> None:
         """Should verify correct passwords."""
-        from vtt_transcribe.api.auth import get_password_hash, verify_password
+        from vtt_server.auth import get_password_hash, verify_password
 
         password = "testpassword123"
         hashed = get_password_hash(password)
@@ -140,7 +140,7 @@ class TestPasswordHashing:
 
     def test_password_verification_failure(self) -> None:
         """Should reject incorrect passwords."""
-        from vtt_transcribe.api.auth import get_password_hash, verify_password
+        from vtt_server.auth import get_password_hash, verify_password
 
         password = "testpassword123"
         hashed = get_password_hash(password)
@@ -153,7 +153,7 @@ class TestJWTTokenCreation:
 
     def test_create_access_token_with_expiry(self) -> None:
         """Should create JWT token with custom expiry."""
-        from vtt_transcribe.api.auth import create_access_token
+        from vtt_server.auth import create_access_token
 
         data: dict[str, str] = {"sub": "testuser"}
         expires_delta = timedelta(minutes=60)
@@ -165,7 +165,7 @@ class TestJWTTokenCreation:
 
     def test_create_access_token_default_expiry(self) -> None:
         """Should create JWT token with default expiry."""
-        from vtt_transcribe.api.auth import create_access_token
+        from vtt_server.auth import create_access_token
 
         data: dict[str, str] = {"sub": "testuser"}
 
@@ -176,7 +176,7 @@ class TestJWTTokenCreation:
 
     def test_create_access_token_with_datetime(self) -> None:
         """Should create JWT token with ISO datetime string in payload."""
-        from vtt_transcribe.api.auth import create_access_token
+        from vtt_server.auth import create_access_token
 
         # JWT doesn't support datetime objects, must use ISO string
         data: dict[str, str] = {"sub": "testuser", "created": datetime.now(UTC).isoformat()}
@@ -193,8 +193,8 @@ class TestDatabaseUserQueries:
     @pytest.mark.asyncio
     async def test_get_user_by_email(self) -> None:
         """Should retrieve user by email."""
-        from vtt_transcribe.api.auth import get_user_by_email
-        from vtt_transcribe.api.models import User
+        from vtt_server.auth import get_user_by_email
+        from vtt_server.models import User
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -211,7 +211,7 @@ class TestDatabaseUserQueries:
     @pytest.mark.asyncio
     async def test_get_user_by_email_not_found(self) -> None:
         """Should return None when user not found by email."""
-        from vtt_transcribe.api.auth import get_user_by_email
+        from vtt_server.auth import get_user_by_email
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -225,8 +225,8 @@ class TestDatabaseUserQueries:
     @pytest.mark.asyncio
     async def test_get_user_by_username(self) -> None:
         """Should retrieve user by username."""
-        from vtt_transcribe.api.auth import get_user_by_username
-        from vtt_transcribe.api.models import User
+        from vtt_server.auth import get_user_by_username
+        from vtt_server.models import User
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -243,7 +243,7 @@ class TestDatabaseUserQueries:
     @pytest.mark.asyncio
     async def test_get_user_by_username_not_found(self) -> None:
         """Should return None when user not found by username."""
-        from vtt_transcribe.api.auth import get_user_by_username
+        from vtt_server.auth import get_user_by_username
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -261,8 +261,8 @@ class TestUserAuthentication:
     @pytest.mark.asyncio
     async def test_authenticate_user_success(self) -> None:
         """Should authenticate user with correct credentials."""
-        from vtt_transcribe.api.auth import authenticate_user, get_password_hash
-        from vtt_transcribe.api.models import User
+        from vtt_server.auth import authenticate_user, get_password_hash
+        from vtt_server.models import User
 
         mock_db = AsyncMock()
         password = "correctpassword"
@@ -281,8 +281,8 @@ class TestUserAuthentication:
     @pytest.mark.asyncio
     async def test_authenticate_user_wrong_password(self) -> None:
         """Should fail authentication with wrong password."""
-        from vtt_transcribe.api.auth import authenticate_user, get_password_hash
-        from vtt_transcribe.api.models import User
+        from vtt_server.auth import authenticate_user, get_password_hash
+        from vtt_server.models import User
 
         mock_db = AsyncMock()
         password = "correctpassword"
@@ -300,7 +300,7 @@ class TestUserAuthentication:
     @pytest.mark.asyncio
     async def test_authenticate_user_not_found(self) -> None:
         """Should fail authentication when user not found."""
-        from vtt_transcribe.api.auth import authenticate_user
+        from vtt_server.auth import authenticate_user
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -318,7 +318,7 @@ class TestGetCurrentUser:
     @pytest.mark.asyncio
     async def test_get_current_user_no_token(self) -> None:
         """Should raise 401 when no token provided."""
-        from vtt_transcribe.api.auth import get_current_user
+        from vtt_server.auth import get_current_user
 
         mock_db = AsyncMock()
 
@@ -331,7 +331,7 @@ class TestGetCurrentUser:
     @pytest.mark.asyncio
     async def test_get_current_user_invalid_token(self) -> None:
         """Should raise 401 when token is invalid."""
-        from vtt_transcribe.api.auth import get_current_user
+        from vtt_server.auth import get_current_user
 
         mock_db = AsyncMock()
 
@@ -343,7 +343,7 @@ class TestGetCurrentUser:
     @pytest.mark.asyncio
     async def test_get_current_user_no_username_in_token(self) -> None:
         """Should raise 401 when token has no username."""
-        from vtt_transcribe.api.auth import create_access_token, get_current_user
+        from vtt_server.auth import create_access_token, get_current_user
 
         mock_db = AsyncMock()
         # Create token without 'sub' claim
@@ -357,7 +357,7 @@ class TestGetCurrentUser:
     @pytest.mark.asyncio
     async def test_get_current_user_user_not_found(self) -> None:
         """Should raise 401 when user not found in database."""
-        from vtt_transcribe.api.auth import create_access_token, get_current_user
+        from vtt_server.auth import create_access_token, get_current_user
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -374,8 +374,8 @@ class TestGetCurrentUser:
     @pytest.mark.asyncio
     async def test_get_current_user_success(self) -> None:
         """Should return user when valid token provided."""
-        from vtt_transcribe.api.auth import create_access_token, get_current_user
-        from vtt_transcribe.api.models import User
+        from vtt_server.auth import create_access_token, get_current_user
+        from vtt_server.models import User
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -397,8 +397,8 @@ class TestGetCurrentActiveUser:
     @pytest.mark.asyncio
     async def test_get_current_active_user_success(self) -> None:
         """Should return user when user is active."""
-        from vtt_transcribe.api.auth import get_current_active_user
-        from vtt_transcribe.api.models import User
+        from vtt_server.auth import get_current_active_user
+        from vtt_server.models import User
 
         mock_user = User(id=1, username="testuser", email="test@example.com", hashed_password="hashed", is_active=True)
 
@@ -410,8 +410,8 @@ class TestGetCurrentActiveUser:
     @pytest.mark.asyncio
     async def test_get_current_active_user_inactive(self) -> None:
         """Should raise 400 when user is inactive."""
-        from vtt_transcribe.api.auth import get_current_active_user
-        from vtt_transcribe.api.models import User
+        from vtt_server.auth import get_current_active_user
+        from vtt_server.models import User
 
         mock_user = User(id=1, username="testuser", email="test@example.com", hashed_password="hashed", is_active=False)
 
@@ -428,7 +428,7 @@ class TestGetCurrentUserOptional:
     @pytest.mark.asyncio
     async def test_get_current_user_optional_no_token(self) -> None:
         """Should return None when no token provided."""
-        from vtt_transcribe.api.auth import get_current_user_optional
+        from vtt_server.auth import get_current_user_optional
 
         mock_db = AsyncMock()
 
@@ -439,7 +439,7 @@ class TestGetCurrentUserOptional:
     @pytest.mark.asyncio
     async def test_get_current_user_optional_invalid_token(self) -> None:
         """Should return None when token is invalid."""
-        from vtt_transcribe.api.auth import get_current_user_optional
+        from vtt_server.auth import get_current_user_optional
 
         mock_db = AsyncMock()
 
@@ -450,7 +450,7 @@ class TestGetCurrentUserOptional:
     @pytest.mark.asyncio
     async def test_get_current_user_optional_no_username(self) -> None:
         """Should return None when token has no username."""
-        from vtt_transcribe.api.auth import create_access_token, get_current_user_optional
+        from vtt_server.auth import create_access_token, get_current_user_optional
 
         mock_db = AsyncMock()
         token = create_access_token({"other_field": "value"})
@@ -462,7 +462,7 @@ class TestGetCurrentUserOptional:
     @pytest.mark.asyncio
     async def test_get_current_user_optional_user_not_found(self) -> None:
         """Should return None when user not found."""
-        from vtt_transcribe.api.auth import create_access_token, get_current_user_optional
+        from vtt_server.auth import create_access_token, get_current_user_optional
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -478,8 +478,8 @@ class TestGetCurrentUserOptional:
     @pytest.mark.asyncio
     async def test_get_current_user_optional_inactive_user(self) -> None:
         """Should return None when user is inactive."""
-        from vtt_transcribe.api.auth import create_access_token, get_current_user_optional
-        from vtt_transcribe.api.models import User
+        from vtt_server.auth import create_access_token, get_current_user_optional
+        from vtt_server.models import User
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -496,8 +496,8 @@ class TestGetCurrentUserOptional:
     @pytest.mark.asyncio
     async def test_get_current_user_optional_success(self) -> None:
         """Should return user when valid token and active user."""
-        from vtt_transcribe.api.auth import create_access_token, get_current_user_optional
-        from vtt_transcribe.api.models import User
+        from vtt_server.auth import create_access_token, get_current_user_optional
+        from vtt_server.models import User
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -529,10 +529,10 @@ class TestSecretKeyConfiguration:
         ):
             import importlib
 
-            auth_module = importlib.import_module("vtt_transcribe.api.auth")
+            auth_module = importlib.import_module("vtt_server.auth")
             importlib.reload(auth_module)
 
-            from vtt_transcribe.api.auth import ALGORITHM
+            from vtt_server.auth import ALGORITHM
 
             assert ALGORITHM == "HS512"
 
@@ -551,7 +551,7 @@ class TestSecretKeyConfiguration:
             clear=True,
         ):
             with pytest.raises(RuntimeError) as exc_info:
-                importlib.reload(importlib.import_module("vtt_transcribe.api.auth"))
+                importlib.reload(importlib.import_module("vtt_server.auth"))
 
         assert "ECDSA JWT algorithms are not permitted" in str(exc_info.value)
 
@@ -561,12 +561,12 @@ class TestSecretKeyConfiguration:
             # Reimport to get new SECRET_KEY
             import importlib
 
-            import vtt_transcribe.api.auth
+            import vtt_server.auth
 
-            importlib.reload(vtt_transcribe.api.auth)
+            importlib.reload(vtt_server.auth)
 
             # Create a token to verify secret key is working
-            from vtt_transcribe.api.auth import create_access_token
+            from vtt_server.auth import create_access_token
 
             token = create_access_token({"sub": "testuser"})
             assert isinstance(token, str)
@@ -577,11 +577,11 @@ class TestSecretKeyConfiguration:
             # Reimport to get development key
             import importlib
 
-            import vtt_transcribe.api.auth
+            import vtt_server.auth
 
-            importlib.reload(vtt_transcribe.api.auth)
+            importlib.reload(vtt_server.auth)
 
-            from vtt_transcribe.api.auth import SECRET_KEY
+            from vtt_server.auth import SECRET_KEY
 
             assert SECRET_KEY == "development-secret-key-change-in-production"
 
@@ -589,11 +589,11 @@ class TestSecretKeyConfiguration:
         """Should raise RuntimeError when SECRET_KEY not set and not in dev mode."""
         import importlib
 
-        import vtt_transcribe.api.auth
+        import vtt_server.auth
 
         with patch.dict("os.environ", {}, clear=True):
             with pytest.raises(RuntimeError) as exc_info:
-                importlib.reload(vtt_transcribe.api.auth)
+                importlib.reload(vtt_server.auth)
 
             assert "SECRET_KEY environment variable must be set" in str(exc_info.value)
 
@@ -604,7 +604,7 @@ class TestAuthRoutes:
     @pytest.mark.asyncio
     async def test_register_user_success(self) -> None:
         """Should register a new user successfully."""
-        from vtt_transcribe.api.routes.auth import UserCreate, register
+        from vtt_server.routes.auth import UserCreate, register
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -616,7 +616,7 @@ class TestAuthRoutes:
 
         user_data = UserCreate(username="newuser", email="new@example.com", password="password123")
 
-        with patch("vtt_transcribe.api.routes.auth.get_password_hash") as mock_hash:
+        with patch("vtt_server.routes.auth.get_password_hash") as mock_hash:
             mock_hash.return_value = "hashed_password"
 
             await register(user_data, mock_db)
@@ -627,8 +627,8 @@ class TestAuthRoutes:
     @pytest.mark.asyncio
     async def test_register_duplicate_username(self) -> None:
         """Should reject duplicate username."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.auth import UserCreate, register
+        from vtt_server.models import User
+        from vtt_server.routes.auth import UserCreate, register
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -647,8 +647,8 @@ class TestAuthRoutes:
     @pytest.mark.asyncio
     async def test_register_duplicate_email(self) -> None:
         """Should reject duplicate email."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.auth import UserCreate, register
+        from vtt_server.models import User
+        from vtt_server.routes.auth import UserCreate, register
 
         mock_db = AsyncMock()
 
@@ -673,8 +673,8 @@ class TestAuthRoutes:
     @pytest.mark.asyncio
     async def test_login_route_success(self) -> None:
         """Should return token on successful login via route."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.auth import login
+        from vtt_server.models import User
+        from vtt_server.routes.auth import login
 
         mock_db = AsyncMock()
         mock_form = MagicMock()
@@ -683,8 +683,8 @@ class TestAuthRoutes:
 
         mock_user = User(id=1, username="testuser", email="test@example.com", hashed_password="hash", is_active=True)
 
-        with patch("vtt_transcribe.api.routes.auth.authenticate_user") as mock_auth:
-            with patch("vtt_transcribe.api.routes.auth.create_access_token") as mock_token:
+        with patch("vtt_server.routes.auth.authenticate_user") as mock_auth:
+            with patch("vtt_server.routes.auth.create_access_token") as mock_token:
                 mock_auth.return_value = mock_user
                 mock_token.return_value = "fake-jwt-token"
 
@@ -696,14 +696,14 @@ class TestAuthRoutes:
     @pytest.mark.asyncio
     async def test_login_route_invalid_credentials(self) -> None:
         """Should reject invalid credentials via route."""
-        from vtt_transcribe.api.routes.auth import login
+        from vtt_server.routes.auth import login
 
         mock_db = AsyncMock()
         mock_form = MagicMock()
         mock_form.username = "testuser"
         mock_form.password = "wrongpassword"
 
-        with patch("vtt_transcribe.api.routes.auth.authenticate_user") as mock_auth:
+        with patch("vtt_server.routes.auth.authenticate_user") as mock_auth:
             mock_auth.return_value = None
 
             with pytest.raises(HTTPException) as exc_info:
@@ -715,8 +715,8 @@ class TestAuthRoutes:
     @pytest.mark.asyncio
     async def test_read_users_me_route(self) -> None:
         """Should return current user information via route."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.auth import read_users_me
+        from vtt_server.models import User
+        from vtt_server.routes.auth import read_users_me
 
         mock_user = User(id=1, username="testuser", email="test@example.com", hashed_password="hash", is_active=True)
 
@@ -727,10 +727,10 @@ class TestAuthRoutes:
 
     def test_create_access_token_with_none_expires_delta(self) -> None:
         """Should use default expiration when expires_delta is None."""
-        from vtt_transcribe.api.auth import create_access_token
+        from vtt_server.auth import create_access_token
 
         # Mock jwt.encode to avoid SECRET_KEY requirement
-        with patch("vtt_transcribe.api.auth.jwt.encode", return_value="mocked_token"):
+        with patch("vtt_server.auth.jwt.encode", return_value="mocked_token"):
             token = create_access_token(data={"sub": "testuser"}, expires_delta=None)
 
         assert isinstance(token, str)
@@ -741,10 +741,10 @@ class TestAuthRoutes:
         from datetime import datetime, timedelta
         from unittest.mock import patch
 
-        from vtt_transcribe.api.auth import create_access_token
+        from vtt_server.auth import create_access_token
 
         # Mock SECRET_KEY for test environment
-        with patch("vtt_transcribe.api.auth.SECRET_KEY", "test-secret-key-for-testing"):
+        with patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-testing"):
             data: dict[str, str | datetime] = {"sub": "testuser"}
 
             # Call with None to trigger else branch on line 54
@@ -753,7 +753,7 @@ class TestAuthRoutes:
             # Decode to verify default expiration was used
             import jwt
 
-            from vtt_transcribe.api.auth import ALGORITHM
+            from vtt_server.auth import ALGORITHM
 
             decoded = jwt.decode(token, "test-secret-key-for-testing", algorithms=[ALGORITHM])
 
@@ -770,10 +770,10 @@ class TestAuthRoutes:
         from datetime import datetime, timedelta
         from unittest.mock import patch
 
-        from vtt_transcribe.api.auth import create_access_token
+        from vtt_server.auth import create_access_token
 
         # Mock SECRET_KEY for test environment
-        with patch("vtt_transcribe.api.auth.SECRET_KEY", "test-secret-key-for-testing"):
+        with patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-testing"):
             now = datetime.now(UTC)
             data: dict[str, str | datetime] = {"sub": "testuser", "created_at": now}
 
@@ -783,7 +783,7 @@ class TestAuthRoutes:
             # Decode to verify datetime was converted
             import jwt
 
-            from vtt_transcribe.api.auth import ALGORITHM
+            from vtt_server.auth import ALGORITHM
 
             decoded = jwt.decode(token, "test-secret-key-for-testing", algorithms=[ALGORITHM])
 

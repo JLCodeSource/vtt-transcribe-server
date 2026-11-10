@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client() -> TestClient:
     """Create test client for FastAPI app."""
-    from vtt_transcribe.api.app import app
+    from vtt_server.app import app
 
     return TestClient(app)
 
@@ -77,8 +77,8 @@ class TestAPIKeyManagement:
     @pytest.mark.asyncio
     async def test_create_api_key_success(self) -> None:
         """Should create API key successfully."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.api_keys import APIKeyCreate, create_api_key
+        from vtt_server.models import User
+        from vtt_server.routes.api_keys import APIKeyCreate, create_api_key
 
         mock_db = AsyncMock()
         mock_db.add = MagicMock()
@@ -96,8 +96,8 @@ class TestAPIKeyManagement:
     @pytest.mark.asyncio
     async def test_create_api_key_invalid_service(self) -> None:
         """Should reject invalid service type."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.api_keys import APIKeyCreate, create_api_key
+        from vtt_server.models import User
+        from vtt_server.routes.api_keys import APIKeyCreate, create_api_key
 
         mock_db = AsyncMock()
         mock_user = User(id=1, username="testuser", email="test@example.com", hashed_password="hash")
@@ -112,8 +112,8 @@ class TestAPIKeyManagement:
     @pytest.mark.asyncio
     async def test_list_api_keys(self) -> None:
         """Should list user's API keys."""
-        from vtt_transcribe.api.models import APIKey, User
-        from vtt_transcribe.api.routes.api_keys import list_api_keys
+        from vtt_server.models import APIKey, User
+        from vtt_server.routes.api_keys import list_api_keys
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -138,8 +138,8 @@ class TestAPIKeyManagement:
     @pytest.mark.asyncio
     async def test_get_api_key_success(self) -> None:
         """Should retrieve specific API key."""
-        from vtt_transcribe.api.models import APIKey, User
-        from vtt_transcribe.api.routes.api_keys import get_api_key
+        from vtt_server.models import APIKey, User
+        from vtt_server.routes.api_keys import get_api_key
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -164,8 +164,8 @@ class TestAPIKeyManagement:
     @pytest.mark.asyncio
     async def test_get_api_key_not_found(self) -> None:
         """Should raise 404 when key not found."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.api_keys import get_api_key
+        from vtt_server.models import User
+        from vtt_server.routes.api_keys import get_api_key
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -182,8 +182,8 @@ class TestAPIKeyManagement:
     @pytest.mark.asyncio
     async def test_delete_api_key_success(self) -> None:
         """Should delete API key successfully."""
-        from vtt_transcribe.api.models import APIKey, User
-        from vtt_transcribe.api.routes.api_keys import delete_api_key
+        from vtt_server.models import APIKey, User
+        from vtt_server.routes.api_keys import delete_api_key
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -208,8 +208,8 @@ class TestAPIKeyManagement:
     @pytest.mark.asyncio
     async def test_delete_api_key_not_found(self) -> None:
         """Should raise 404 when key to delete not found."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.api_keys import delete_api_key
+        from vtt_server.models import User
+        from vtt_server.routes.api_keys import delete_api_key
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -226,8 +226,8 @@ class TestAPIKeyManagement:
     @pytest.mark.asyncio
     async def test_get_user_api_key_success(self) -> None:
         """Should retrieve and decrypt user API key."""
-        from vtt_transcribe.api.models import APIKey
-        from vtt_transcribe.api.routes.api_keys import encrypt_key, get_user_api_key
+        from vtt_server.models import APIKey
+        from vtt_server.routes.api_keys import encrypt_key, get_user_api_key
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -254,7 +254,7 @@ class TestAPIKeyManagement:
     @pytest.mark.asyncio
     async def test_get_user_api_key_not_found(self) -> None:
         """Should return None when user API key not found."""
-        from vtt_transcribe.api.routes.api_keys import get_user_api_key
+        from vtt_server.routes.api_keys import get_user_api_key
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -271,7 +271,7 @@ class TestEncryptionFunctions:
 
     def test_encrypt_decrypt_roundtrip(self) -> None:
         """Should encrypt and decrypt API key correctly."""
-        from vtt_transcribe.api.routes.api_keys import decrypt_key, encrypt_key
+        from vtt_server.routes.api_keys import decrypt_key, encrypt_key
 
         original_key = "sk-test-api-key-12345"
         encrypted = encrypt_key(original_key)
@@ -293,22 +293,22 @@ class TestEncryptionFunctions:
                 del os.environ["ENCRYPTION_KEY"]
 
             # Remove api_keys module if already loaded
-            if "vtt_transcribe.api.routes.api_keys" in sys.modules:
-                del sys.modules["vtt_transcribe.api.routes.api_keys"]
+            if "vtt_server.routes.api_keys" in sys.modules:
+                del sys.modules["vtt_server.routes.api_keys"]
 
             # Try to import - should raise RuntimeError during import
             # The import itself triggers the error, not the reload
             with pytest.raises(RuntimeError, match="ENCRYPTION_KEY environment variable is not set"):
                 # Import triggers validation in module init
-                import vtt_transcribe.api.routes.api_keys  # noqa: F401
+                import vtt_server.routes.api_keys  # noqa: F401
         finally:
             # Restore original key
             if original_key:
                 os.environ["ENCRYPTION_KEY"] = original_key
 
             # Reload module with correct key
-            if "vtt_transcribe.api.routes.api_keys" in sys.modules:
-                del sys.modules["vtt_transcribe.api.routes.api_keys"]
+            if "vtt_server.routes.api_keys" in sys.modules:
+                del sys.modules["vtt_server.routes.api_keys"]
 
 
 class TestJobHistoryEndpoints:
@@ -341,8 +341,8 @@ class TestJobManagement:
     @pytest.mark.asyncio
     async def test_list_user_jobs(self) -> None:
         """Should list user's transcription jobs."""
-        from vtt_transcribe.api.models import TranscriptionJob, User
-        from vtt_transcribe.api.routes.jobs import list_user_jobs
+        from vtt_server.models import TranscriptionJob, User
+        from vtt_server.routes.jobs import list_user_jobs
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -368,8 +368,8 @@ class TestJobManagement:
     @pytest.mark.asyncio
     async def test_list_user_jobs_with_status_filter(self) -> None:
         """Should filter jobs by status."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.jobs import list_user_jobs
+        from vtt_server.models import User
+        from vtt_server.routes.jobs import list_user_jobs
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -385,8 +385,8 @@ class TestJobManagement:
     @pytest.mark.asyncio
     async def test_get_job_detail_success(self) -> None:
         """Should retrieve job details."""
-        from vtt_transcribe.api.models import TranscriptionJob, User
-        from vtt_transcribe.api.routes.jobs import get_job_detail
+        from vtt_server.models import TranscriptionJob, User
+        from vtt_server.routes.jobs import get_job_detail
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -412,8 +412,8 @@ class TestJobManagement:
     @pytest.mark.asyncio
     async def test_get_job_detail_not_found(self) -> None:
         """Should raise 404 when job not found."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.jobs import get_job_detail
+        from vtt_server.models import User
+        from vtt_server.routes.jobs import get_job_detail
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -430,8 +430,8 @@ class TestJobManagement:
     @pytest.mark.asyncio
     async def test_delete_job_success(self) -> None:
         """Should delete job successfully."""
-        from vtt_transcribe.api.models import TranscriptionJob, User
-        from vtt_transcribe.api.routes.jobs import delete_job
+        from vtt_server.models import TranscriptionJob, User
+        from vtt_server.routes.jobs import delete_job
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -459,8 +459,8 @@ class TestJobManagement:
     @pytest.mark.asyncio
     async def test_delete_job_not_found(self) -> None:
         """Should raise 404 when job to delete not found."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.jobs import delete_job
+        from vtt_server.models import User
+        from vtt_server.routes.jobs import delete_job
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -477,8 +477,8 @@ class TestJobManagement:
     @pytest.mark.asyncio
     async def test_get_user_stats(self) -> None:
         """Should retrieve user job statistics."""
-        from vtt_transcribe.api.models import User
-        from vtt_transcribe.api.routes.jobs import get_user_stats
+        from vtt_server.models import User
+        from vtt_server.routes.jobs import get_user_stats
 
         mock_db = AsyncMock()
         mock_result = MagicMock()

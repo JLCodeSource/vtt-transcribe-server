@@ -1,4 +1,4 @@
-# Docker ignore file for vtt-transcribe
+# Docker ignore file for vtt-transcribe-server
 # Exclude development and build artifacts from Docker context
 
 # Python
@@ -55,6 +55,10 @@ docs/
 *.md
 !README.md
 
+# Frontend has its own Docker context
+frontend/
+.env
+
 # Test files
 tests/
 test_*.txt
@@ -71,7 +75,6 @@ test_*.txt
 .devcontainer/
 
 # Docker
-Dockerfile*
 .dockerignore
 docker-compose*.yml
 
@@ -80,8 +83,7 @@ Makefile
 
 # Config files
 ruff.toml
-mypy.ini
-.python-version
+.mypy.ini
 
 # Sample files
 *.mp4

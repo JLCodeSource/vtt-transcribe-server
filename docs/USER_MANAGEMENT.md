@@ -96,7 +96,7 @@ DATABASE_URL=sqlite+aiosqlite:///./vtt_transcribe.db  # Development
 # DATABASE_URL=postgresql+asyncpg://user:pass@localhost/vtt_transcribe  # Production
 
 # Generate secrets using the built-in tool (requires cryptography package):
-# First, install API extras: uv sync --extra api
+# First, install deps: uv sync
 # Then run: uv run python scripts/generate_secrets.py
 # Copy the output below:
 SECRET_KEY=your-secret-key-here
@@ -111,7 +111,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 ```bash
 # Install with API and database support
-uv sync --extra api
+uv sync
 
 # Or update existing environment
 uv pip install sqlalchemy[asyncio] asyncpg aiosqlite python-jose[cryptography] passlib[bcrypt] cryptography
@@ -122,7 +122,7 @@ uv pip install sqlalchemy[asyncio] asyncpg aiosqlite python-jose[cryptography] p
 **Option 1: Automatic (via API startup)**
 ```bash
 # Database tables are created automatically when the API starts
-uv run uvicorn vtt_transcribe.api.app:app
+uv run uvicorn vtt_server.app:app
 ```
 
 **Option 2: Manual (using script)**

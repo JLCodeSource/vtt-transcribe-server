@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Create test client for FastAPI app."""
-    from vtt_transcribe.api.app import app
+    from vtt_server.app import app
 
     return TestClient(app)
 
@@ -40,7 +40,7 @@ def mock_oauth_client():
 @pytest.fixture
 def mock_user_factory():
     """Factory fixture for creating mock User objects."""
-    from vtt_transcribe.api.models import User
+    from vtt_server.models import User
 
     def _create_mock_user(
         username: str = "test-user",
@@ -94,7 +94,7 @@ class TestOAuthProviders:
             # Need to reload the module to pick up new env vars
             import importlib
 
-            from vtt_transcribe.api.routes import oauth
+            from vtt_server.routes import oauth
 
             importlib.reload(oauth)
             response = client.get("/oauth/providers")
@@ -116,7 +116,7 @@ class TestOAuthProviders:
         ):
             import importlib
 
-            from vtt_transcribe.api.routes import oauth
+            from vtt_server.routes import oauth
 
             importlib.reload(oauth)
             response = client.get("/oauth/providers")
@@ -137,7 +137,7 @@ class TestOAuthLogin:
 
     def test_login_unconfigured_provider(self, client):
         """Should return 503 when provider is not configured."""
-        with patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth:
+        with patch("vtt_server.routes.oauth.oauth") as mock_oauth:
             mock_oauth.create_client.return_value = None
             response = client.get("/oauth/login/google")
             assert response.status_code == 503
@@ -150,7 +150,7 @@ class TestOAuthLogin:
         redirect_response = RedirectResponse(url="https://accounts.google.com/o/oauth2/auth")
         mock_oauth_client.authorize_redirect = AsyncMock(return_value=redirect_response)
 
-        with patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth:
+        with patch("vtt_server.routes.oauth.oauth") as mock_oauth:
             mock_oauth.create_client.return_value = mock_oauth_client
             client.get("/oauth/login/google", follow_redirects=False)
             # Should attempt to redirect
@@ -167,7 +167,7 @@ class TestOAuthCallback:
 
     def test_callback_unconfigured_provider(self, client):
         """Should return 503 when provider is not configured."""
-        with patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth:
+        with patch("vtt_server.routes.oauth.oauth") as mock_oauth:
             mock_oauth.create_client.return_value = None
             response = client.get("/oauth/callback/google")
             assert response.status_code == 503
@@ -179,7 +179,7 @@ class TestOAuthCallback:
         )
 
         with (
-            patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth,
+            patch("vtt_server.routes.oauth.oauth") as mock_oauth,
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -201,9 +201,9 @@ class TestOAuthCallback:
         mock_user = mock_user_factory(username="oauth-google-test", oauth_provider="google")
 
         with (
-            patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth,
-            patch("vtt_transcribe.api.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
-            patch("vtt_transcribe.api.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
+            patch("vtt_server.routes.oauth.oauth") as mock_oauth,
+            patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
+            patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -226,7 +226,7 @@ class TestOAuthCallback:
         )
 
         with (
-            patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth,
+            patch("vtt_server.routes.oauth.oauth") as mock_oauth,
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -248,9 +248,9 @@ class TestOAuthCallback:
         mock_user = mock_user_factory(username="oauth-github-test", oauth_provider="github")
 
         with (
-            patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth,
-            patch("vtt_transcribe.api.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
-            patch("vtt_transcribe.api.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
+            patch("vtt_server.routes.oauth.oauth") as mock_oauth,
+            patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
+            patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -282,9 +282,9 @@ class TestOAuthCallback:
         mock_user = mock_user_factory(username="oauth-github-test", oauth_provider="github")
 
         with (
-            patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth,
-            patch("vtt_transcribe.api.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
-            patch("vtt_transcribe.api.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
+            patch("vtt_server.routes.oauth.oauth") as mock_oauth,
+            patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
+            patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -304,7 +304,7 @@ class TestOAuthCallback:
         mock_oauth_client.get = AsyncMock(return_value=user_response)
 
         with (
-            patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth,
+            patch("vtt_server.routes.oauth.oauth") as mock_oauth,
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -328,9 +328,9 @@ class TestOAuthCallback:
         )
 
         with (
-            patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth,
-            patch("vtt_transcribe.api.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
-            patch("vtt_transcribe.api.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
+            patch("vtt_server.routes.oauth.oauth") as mock_oauth,
+            patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
+            patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -351,8 +351,8 @@ class TestOAuthCallback:
         # Mock get_or_create_oauth_user returning None (account mismatch)
 
         with (
-            patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth,
-            patch("vtt_transcribe.api.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
+            patch("vtt_server.routes.oauth.oauth") as mock_oauth,
+            patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -377,9 +377,9 @@ class TestOAuthCallback:
         )
 
         with (
-            patch("vtt_transcribe.api.routes.oauth.oauth") as mock_oauth,
-            patch("vtt_transcribe.api.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
-            patch("vtt_transcribe.api.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
+            patch("vtt_server.routes.oauth.oauth") as mock_oauth,
+            patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
+            patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -396,7 +396,7 @@ class TestOAuthHelpers:
 
     def test_validate_frontend_url_valid(self):
         """Should validate proper URLs."""
-        from vtt_transcribe.api.routes.oauth import validate_frontend_url
+        from vtt_server.routes.oauth import validate_frontend_url
 
         assert validate_frontend_url("http://localhost:3000")
         assert validate_frontend_url("https://example.com")
@@ -404,7 +404,7 @@ class TestOAuthHelpers:
 
     def test_validate_frontend_url_invalid(self):
         """Should reject invalid URLs."""
-        from vtt_transcribe.api.routes.oauth import validate_frontend_url
+        from vtt_server.routes.oauth import validate_frontend_url
 
         assert not validate_frontend_url("not-a-url")
         assert not validate_frontend_url("")

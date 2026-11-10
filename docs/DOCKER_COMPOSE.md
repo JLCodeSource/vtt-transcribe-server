@@ -12,7 +12,7 @@ This guide explains how to run vtt-transcribe using Docker Compose for local dev
 2. **Generate secure secrets:**
    ```bash
    # Install API extras (includes cryptography package)
-   uv sync --extra api
+   uv sync
    # OR use the make command
    # make install-api
    
@@ -172,7 +172,7 @@ docker compose exec -T db psql -U vtt_user vtt_transcribe < backup.sql
 docker compose exec api bash
 
 # Run CLI transcription
-docker compose exec worker vtt --help
+docker compose exec worker python -c "import vtt_transcribe; print(vtt_transcribe.__version__)"
 ```
 
 ## Development Workflow

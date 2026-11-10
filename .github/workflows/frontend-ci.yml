@@ -1,3 +1,5 @@
+# NOTE: GitHub Actions are intentionally DISABLED on this private repo (cost). This file does not run
+# until Actions are enabled in repo settings.
 name: Frontend CI
 
 permissions:
@@ -9,15 +11,17 @@ on:
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend-ci.yml'
-      - 'Makefile'
-      - 'docs/TESTING.md'
+      - 'vtt_server/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
   pull_request:
     branches: [ main ]
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend-ci.yml'
-      - 'Makefile'
-      - 'docs/TESTING.md'
+      - 'vtt_server/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
 
 jobs:
   frontend-tests:
@@ -50,7 +54,7 @@ jobs:
       - name: Setup Python for backend
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.12'
 
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -58,7 +62,7 @@ jobs:
       - name: Install backend dependencies
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
-          uv sync --all-extras
+          uv sync
 
       - name: Start backend server
         env:
@@ -67,8 +71,8 @@ jobs:
           ENCRYPTION_KEY: "NIiQ9PoBLY9fpqc_kWzhCE1EvcCpRzSZu9FT339Mz2k="
         run: |
           mkdir -p data
-          # Use Python from venv to run uvicorn directly  
-          .venv/bin/python -m uvicorn vtt_transcribe.api.app:app --host 0.0.0.0 --port 8000 &
+          # Run uvicorn from the venv
+          .venv/bin/python -m uvicorn vtt_server.app:app --host 0.0.0.0 --port 8000 &
           echo $! > backend.pid
           # Wait for backend to be ready
           for i in {1..30}; do

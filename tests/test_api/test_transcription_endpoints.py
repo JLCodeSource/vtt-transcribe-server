@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Create test client for FastAPI app."""
-    from vtt_transcribe.api.app import app
+    from vtt_server.app import app
 
     return TestClient(app)
 
@@ -44,7 +44,7 @@ class TestTranscribeEndpoint:
         data = response.json()
         assert "api_key" in str(data).lower() or "detail" in data
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_transcribe_accepts_audio_file(self, mock_transcriber, client, sample_audio_file):
         """POST /transcribe should accept audio file with API key."""
         mock_instance = mock_transcriber.return_value
@@ -56,7 +56,7 @@ class TestTranscribeEndpoint:
 
         assert response.status_code in [200, 201, 202]
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_transcribe_returns_job_id(self, mock_transcriber, client, sample_audio_file):
         """POST /transcribe should return a job ID for async processing."""
         mock_instance = mock_transcriber.return_value
@@ -70,7 +70,7 @@ class TestTranscribeEndpoint:
         assert "job_id" in response_data
         assert isinstance(response_data["job_id"], str)
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_transcribe_returns_status(self, mock_transcriber, client, sample_audio_file):
         """POST /transcribe should return job status."""
         mock_instance = mock_transcriber.return_value
@@ -88,7 +88,7 @@ class TestTranscribeEndpoint:
 class TestJobStatusEndpoint:
     """Tests for /jobs/{job_id} status endpoint."""
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_job_status_endpoint_exists(self, mock_transcriber, client, sample_audio_file):
         """GET /jobs/{job_id} endpoint should exist."""
         mock_instance = mock_transcriber.return_value
@@ -107,7 +107,7 @@ class TestJobStatusEndpoint:
         response = client.get("/api/jobs/nonexistent-job-id")
         assert response.status_code == 404
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_job_status_returns_job_info(self, mock_transcriber, client, sample_audio_file):
         """GET /jobs/{job_id} should return job information."""
         mock_instance = mock_transcriber.return_value
@@ -138,7 +138,7 @@ class TestSupportedFileTypes:
             ("test.ogg", "audio/ogg"),
         ],
     )
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_accepts_supported_audio_video_formats(self, mock_transcriber, client, filename, mimetype):
         """POST /transcribe should accept common audio/video formats."""
         mock_instance = mock_transcriber.return_value
@@ -159,7 +159,7 @@ class TestAPITranscriptionCoverage:
         """Test transcribe endpoint checks for filename (line 39)."""
         from fastapi import UploadFile
 
-        from vtt_transcribe.api.routes.transcription import create_transcription_job
+        from vtt_server.routes.transcription import create_transcription_job
 
         # Create UploadFile with no filename
         mock_file = MagicMock(spec=UploadFile)
@@ -177,7 +177,7 @@ class TestAPITranscriptionCoverage:
         """Test diarize endpoint checks for filename (line 94)."""
         from fastapi import UploadFile
 
-        from vtt_transcribe.api.routes.transcription import create_diarization_job
+        from vtt_server.routes.transcription import create_diarization_job
 
         # Create UploadFile with no filename
         mock_file = MagicMock(spec=UploadFile)
@@ -195,7 +195,7 @@ class TestAPITranscriptionCoverage:
         """Test /diarize endpoint async processing path (lines 126-138)."""
         from fastapi.testclient import TestClient
 
-        from vtt_transcribe.api import app
+        from vtt_server import app
 
         client = TestClient(app)
 
@@ -219,11 +219,11 @@ class TestAPITranscriptionCoverage:
         """
         from fastapi.testclient import TestClient
 
-        from vtt_transcribe.api import app
+        from vtt_server import app
 
         client = TestClient(app)
 
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber"):
+        with patch("vtt_server.routes.transcription.VideoTranscriber"):
             response = client.post(
                 "/api/transcribe",
                 files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
@@ -240,7 +240,7 @@ class TestAPITranscriptionCoverage:
         """Test exception handling in _process_diarization (lines 126-138)."""
         from fastapi.testclient import TestClient
 
-        from vtt_transcribe.api import app
+        from vtt_server import app
 
         client = TestClient(app)
 
@@ -270,7 +270,7 @@ class TestTranscriptionAsyncPaths:
         """Test _process_diarization async function (lines 126-138)."""
         from unittest.mock import AsyncMock
 
-        from vtt_transcribe.api.routes.transcription import _process_diarization, jobs
+        from vtt_server.routes.transcription import _process_diarization, jobs
 
         # Create an async mock UploadFile
         test_content = b"fake audio data"
@@ -290,13 +290,13 @@ class TestTranscriptionAsyncPaths:
 
     def test_process_transcription_exception_path(self) -> None:
         """Test _process_transcription exception handling (lines 161-172)."""
-        from vtt_transcribe.api.routes.transcription import _process_transcription, jobs
+        from vtt_server.routes.transcription import _process_transcription, jobs
 
         job_id = "test-exception-job"
         jobs[job_id] = {"status": "pending", "job_id": job_id}
 
         # Mock VideoTranscriber to raise exception
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock_vt:
+        with patch("vtt_server.routes.transcription.VideoTranscriber") as mock_vt:
             mock_instance = MagicMock()
             mock_instance.transcribe.side_effect = RuntimeError("Transcription failed")
             mock_vt.return_value = mock_instance
@@ -318,13 +318,13 @@ class TestTranscriptionAsyncPaths:
 
     def test_transcription_complete_success_path(self) -> None:
         """Test successful transcription completion (lines 168-169)."""
-        from vtt_transcribe.api.routes.transcription import _process_transcription, jobs
+        from vtt_server.routes.transcription import _process_transcription, jobs
 
         job_id = "success-job"
         jobs[job_id] = {"status": "pending", "job_id": job_id}
 
         # Mock VideoTranscriber to succeed
-        with patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock_vt:
+        with patch("vtt_server.routes.transcription.VideoTranscriber") as mock_vt:
             mock_instance = MagicMock()
             mock_instance.transcribe.return_value = "[00:00 - 00:05] Test transcript"
             mock_vt.return_value = mock_instance
@@ -363,7 +363,7 @@ class TestDetectLanguageEndpoint:
         response = client.post("/api/detect-language", files=files)
         assert response.status_code == 422
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_detect_language_returns_language_code(self, mock_transcriber, client, sample_audio_file):
         """POST /detect-language should return detected language code."""
         mock_instance = mock_transcriber.return_value
@@ -402,7 +402,7 @@ class TestTranslateEndpoint:
         response = client.post("/api/translate", data={"transcript": "Hello", "target_language": "Spanish"})
         assert response.status_code == 422
 
-    @patch("vtt_transcribe.api.routes.transcription.AudioTranslator")
+    @patch("vtt_server.routes.transcription.AudioTranslator")
     def test_translate_returns_translated_text(self, mock_translator, client):
         """POST /translate should return translated transcript."""
         mock_instance = mock_translator.return_value
@@ -426,8 +426,8 @@ class TestTranslateEndpoint:
 class TestTranscribeWithTranslation:
     """Tests for transcription with translation support."""
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
-    @patch("vtt_transcribe.api.routes.transcription.AudioTranslator")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.AudioTranslator")
     def test_transcribe_with_translate_to_parameter(self, mock_translator, mock_transcriber, client, sample_audio_file):
         """POST /transcribe with translate_to should trigger translation."""
         mock_transcriber_instance = mock_transcriber.return_value
@@ -446,14 +446,14 @@ class TestTranscribeWithTranslation:
 
     def test_transcription_translation_async_path(self):
         """Test async translation path in _process_transcription."""
-        from vtt_transcribe.api.routes.transcription import _process_transcription, jobs
+        from vtt_server.routes.transcription import _process_transcription, jobs
 
         job_id = "translation-job"
         jobs[job_id] = {"status": "pending", "job_id": job_id}
 
         with (
-            patch("vtt_transcribe.api.routes.transcription.VideoTranscriber") as mock_vt,
-            patch("vtt_transcribe.api.routes.transcription.AudioTranslator") as mock_at,
+            patch("vtt_server.routes.transcription.VideoTranscriber") as mock_vt,
+            patch("vtt_server.routes.transcription.AudioTranslator") as mock_at,
         ):
             # Mock successful transcription
             mock_vt_instance = MagicMock()
@@ -489,7 +489,7 @@ class TestDetectLanguageErrorHandling:
         from fastapi import UploadFile
         from fastapi.exceptions import HTTPException
 
-        from vtt_transcribe.api.routes.transcription import detect_language
+        from vtt_server.routes.transcription import detect_language
 
         # Create UploadFile with None filename
         mock_file = UploadFile(file=io.BytesIO(b"test"), filename=None)  # type: ignore[arg-type]
@@ -521,7 +521,7 @@ class TestDetectLanguageErrorHandling:
         assert response.status_code == 413
         assert "File too large" in response.json()["detail"]
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_detect_language_processing_exception(self, mock_transcriber, client, sample_audio_file):
         """Test detect_language when transcriber raises exception."""
         mock_instance = mock_transcriber.return_value
@@ -538,7 +538,7 @@ class TestDetectLanguageErrorHandling:
 class TestTranslateErrorHandling:
     """Tests for error handling in /translate endpoint."""
 
-    @patch("vtt_transcribe.api.routes.transcription.AudioTranslator")
+    @patch("vtt_server.routes.transcription.AudioTranslator")
     def test_translate_processing_exception(self, mock_translator, client):
         """Test translate when translator raises exception."""
         mock_instance = mock_translator.return_value
@@ -566,7 +566,7 @@ class TestDownloadTranscriptEndpoint:
         assert response.status_code == 404
         assert "Job not found" in response.json()["detail"]
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_download_job_not_completed(self, mock_transcriber, client, sample_audio_file):
         """Test download when job is still processing."""
         # Create a job
@@ -579,7 +579,7 @@ class TestDownloadTranscriptEndpoint:
         job_id = create_response.json()["job_id"]
 
         # Manually set job to processing state
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         jobs[job_id]["status"] = "processing"
 
@@ -591,7 +591,7 @@ class TestDownloadTranscriptEndpoint:
     def test_download_no_result_available(self, client):
         """Test download when job has no result."""
         # Create a completed job with empty result
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         job_id = "test-empty-job"
         jobs[job_id] = {"status": "completed", "job_id": job_id, "result": ""}
@@ -602,7 +602,7 @@ class TestDownloadTranscriptEndpoint:
 
     def test_download_no_segments_parsed(self, client):
         """Test download when transcript has no valid segments."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         job_id = "test-no-segments-job"
         jobs[job_id] = {"status": "completed", "job_id": job_id, "result": "Invalid transcript format"}
@@ -613,7 +613,7 @@ class TestDownloadTranscriptEndpoint:
 
     def test_download_txt_format(self, client):
         """Test downloading transcript in TXT format."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         job_id = "test-txt-job"
         jobs[job_id] = {
@@ -631,7 +631,7 @@ class TestDownloadTranscriptEndpoint:
 
     def test_download_vtt_format(self, client):
         """Test downloading transcript in VTT format."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         job_id = "test-vtt-job"
         jobs[job_id] = {
@@ -647,7 +647,7 @@ class TestDownloadTranscriptEndpoint:
 
     def test_download_srt_format(self, client):
         """Test downloading transcript in SRT format."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         job_id = "test-srt-job"
         jobs[job_id] = {
@@ -664,7 +664,7 @@ class TestDownloadTranscriptEndpoint:
 
     def test_download_with_empty_lines(self, client):
         """Test downloading transcript with empty lines in middle."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         job_id = "test-empty-lines-job"
         jobs[job_id] = {
@@ -681,7 +681,7 @@ class TestDownloadTranscriptEndpoint:
 
     def test_download_with_speaker_labels(self, client):
         """Test downloading transcript with speaker labels."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         job_id = "test-speaker-job"
         jobs[job_id] = {
@@ -713,10 +713,10 @@ class TestDownloadTranscriptEndpoint:
 class TestProgressEventsInTranscription:
     """Tests for progress event emission during transcription."""
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_progress_events_emitted_during_transcription(self, mock_transcriber, client):
         """Progress events should be emitted during transcription processing."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         mock_instance = mock_transcriber.return_value
         mock_instance.transcribe.return_value = "[00:00 - 00:05] Test"
@@ -759,10 +759,10 @@ class TestProgressEventsInTranscription:
             assert "message" in event, f"Event missing 'message' field: {event}"
             assert "timestamp" in event, f"Event missing 'timestamp' field: {event}"
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_progress_events_for_language_detection(self, mock_transcriber, client):
         """Progress events should include language detection."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         mock_instance = mock_transcriber.return_value
         mock_instance.transcribe.return_value = "[00:00 - 00:05] Test"
@@ -798,11 +798,11 @@ class TestProgressEventsInTranscription:
         # Check that language detection was mentioned
         assert any("language" in e["message"].lower() for e in language_events)
 
-    @patch("vtt_transcribe.api.routes.transcription.VideoTranscriber")
-    @patch("vtt_transcribe.api.routes.transcription.AudioTranslator")
+    @patch("vtt_server.routes.transcription.VideoTranscriber")
+    @patch("vtt_server.routes.transcription.AudioTranslator")
     def test_progress_events_for_translation(self, mock_translator, mock_transcriber, client):
         """Progress events should include translation progress."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         mock_transcriber_instance = mock_transcriber.return_value
         mock_transcriber_instance.transcribe.return_value = "[00:00 - 00:05] Test"
@@ -839,7 +839,7 @@ class TestProgressEventsInTranscription:
 
     def test_diarization_job_has_progress_queue(self, client):
         """Diarization jobs should have progress_updates queue."""
-        from vtt_transcribe.api.routes.transcription import jobs
+        from vtt_server.routes.transcription import jobs
 
         response = client.post(
             "/api/diarize",
@@ -855,7 +855,7 @@ class TestProgressEventsInTranscription:
 
     def test_emit_progress_function_exists(self):
         """_emit_progress function should exist and be callable."""
-        from vtt_transcribe.api.routes.transcription import _emit_progress
+        from vtt_server.routes.transcription import _emit_progress
 
         # Should not raise
         _emit_progress("test-job", "Test message", "info")

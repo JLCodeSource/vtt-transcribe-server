@@ -212,7 +212,7 @@ class TestDockerfileTargets:
         with open(dockerfile) as f:
             content = f.read()
 
-        required_targets = ["builder", "base", "cli", "api", "worker"]
+        required_targets = ["builder", "base", "api", "worker"]
 
         for target in required_targets:
             pattern = rf"FROM .+ AS {target}"
