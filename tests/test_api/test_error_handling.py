@@ -50,7 +50,7 @@ def test_missing_api_key() -> None:
     response = client.post("/api/transcribe", files=files)
 
     assert response.status_code == 422
-    assert "field required" in response.json()["detail"][0]["msg"].lower()
+    assert "api_key" in response.json()["detail"]
 
 
 def test_missing_file() -> None:

@@ -25,12 +25,12 @@ class TestDiarizationEndpoint:
     """Tests for diarization-enabled transcription."""
 
     @patch("vtt_server.routes.transcription.VideoTranscriber")
-    def test_transcribe_with_diarization_requires_hf_token(self, _mock_transcriber, client):
-        """POST /transcribe with diarize=true should require HF token."""
+    def test_transcribe_with_pyannote_requires_hf_token(self, _mock_transcriber, client):
+        """POST /transcribe with diarizer=pyannote should require HF token (sherpa, the default, does not)."""
         response = client.post(
             "/api/transcribe",
             files={"file": ("test.mp3", io.BytesIO(b"fake audio"), "audio/mpeg")},
-            data={"api_key": "test-key", "diarize": "true"},
+            data={"api_key": "test-key", "diarize": "true", "diarizer": "pyannote"},
         )
         assert response.status_code == 400
         assert "huggingface" in response.json()["detail"].lower() or "hf_token" in response.json()["detail"].lower()
@@ -92,13 +92,14 @@ class TestDiarizeOnlyEndpoint:
         assert response.status_code in [400, 422]  # Bad request or validation error, but endpoint exists
 
     @patch("vtt_server.routes.transcription.VideoTranscriber")
-    def test_diarize_requires_hf_token(self, _mock_transcriber, client):
-        """POST /diarize should require HF token."""
+    def test_diarize_pyannote_requires_hf_token(self, _mock_transcriber, client):
+        """POST /diarize with diarizer=pyannote should require HF token."""
         response = client.post(
             "/api/diarize",
             files={"file": ("test.mp3", io.BytesIO(b"fake audio"), "audio/mpeg")},
+            data={"diarizer": "pyannote"},
         )
-        assert response.status_code in [400, 422]
+        assert response.status_code == 400
 
     @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_diarize_with_hf_token_succeeds(self, mock_transcriber, client):
@@ -129,7 +130,7 @@ class TestDiarizeOnlyEndpoint:
 
     @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_diarize_uses_env_token(self, mock_transcriber, client, monkeypatch):
-        """POST /diarize should use HF_TOKEN env var when no token provided."""
+        """POST /diarize (pyannote) should use HF_TOKEN env var when no token provided."""
         monkeypatch.setenv("HF_TOKEN", "hf_env_token")
         mock_instance = mock_transcriber.return_value
         mock_instance.transcribe.return_value = "[00:00 - 00:05] Speaker 1: Test"
@@ -137,6 +138,7 @@ class TestDiarizeOnlyEndpoint:
         response = client.post(
             "/api/diarize",
             files={"file": ("test.mp3", io.BytesIO(b"fake audio"), "audio/mpeg")},
+            data={"diarizer": "pyannote"},
         )
         assert response.status_code in [200, 201, 202]
         assert "job_id" in response.json()
