@@ -235,7 +235,7 @@
         <span>Engine</span>
         <select bind:value={options.engine} disabled={isUploading} aria-label="Engine">
           {#each engines as e (e.id)}
-            <option value={e.id} disabled={!e.available}>{e.label}{e.available ? '' : ' — coming soon'}</option>
+            <option value={e.id} disabled={!e.available}>{e.label}{e.available ? '' : ' — not installed'}</option>
           {/each}
         </select>
       </label>

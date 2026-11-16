@@ -18,7 +18,6 @@ def client():
 class TestDiarizationEndpoint:
     """Tests for diarization-enabled transcription."""
 
-
     @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_transcribe_with_diarization_needs_no_token(self, mock_transcriber, client):
         """POST /transcribe with diarize=true needs no token."""
@@ -34,8 +33,6 @@ class TestDiarizationEndpoint:
         assert "job_id" in response.json()
 
 
-
-
 class TestDiarizeOnlyEndpoint:
     """Tests for diarization-only endpoint."""
 
@@ -43,7 +40,6 @@ class TestDiarizeOnlyEndpoint:
         """POST /diarize endpoint should exist."""
         response = client.post("/api/diarize")
         assert response.status_code in [400, 422]  # Bad request or validation error, but endpoint exists
-
 
     @patch("vtt_server.routes.transcription.VideoTranscriber")
     def test_diarize_needs_no_token(self, mock_transcriber, client):
@@ -57,8 +53,6 @@ class TestDiarizeOnlyEndpoint:
         )
         assert response.status_code in [200, 201, 202]
         assert "job_id" in response.json()
-
-
 
 
 class TestNoPyannote:
