@@ -15,7 +15,6 @@ nano .env  # or use VS Code
 - `SECRET_KEY` - Random string for JWT signing
 
 **Optional variables:**
-- `HUGGINGFACE_TOKEN` - For speaker diarization features
 
 ### 2. Start Services
 ```bash
@@ -114,7 +113,7 @@ The devcontainer joins the `vtt-network` docker network, allowing direct communi
 
 **Why this works:**
 - Docker-compose creates `vtt-transcribe_vtt-network` bridge network
-- All services (db, api, worker, frontend) connect to this network
+- All services (db, api, frontend) connect to this network
 - Devcontainer joins the same network via `runArgs`
 - Services communicate via Docker's internal DNS (service names)
 - Docker-compose port mappings expose services to Windows host

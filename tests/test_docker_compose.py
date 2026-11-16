@@ -49,7 +49,7 @@ class TestDockerComposeStructure:
     def test_all_required_services_defined(self, docker_compose_config: dict) -> None:
         """Verify all required services are defined."""
         services = docker_compose_config.get("services", {})
-        required_services = ["db", "api", "worker", "frontend"]
+        required_services = ["db", "api", "frontend"]
 
         for service in required_services:
             assert service in services, f"Service '{service}' not defined"
@@ -95,24 +95,6 @@ class TestDockerComposeStructure:
 
         # Check environment includes required vars
         env = api["environment"]
-        assert "DATABASE_URL" in env
-        assert "OPENAI_API_KEY" in env
-
-    def test_worker_service_configuration(self, docker_compose_config: dict) -> None:
-        """Verify worker service is properly configured."""
-        worker = docker_compose_config["services"]["worker"]
-
-        # Check build configuration
-        assert "build" in worker
-        assert worker["build"]["target"] == "worker"
-
-        # Check dependencies
-        assert "depends_on" in worker
-        deps = worker["depends_on"]
-        assert "db" in deps or "db" in [d for d in deps if isinstance(d, str)]
-
-        # Check environment includes required vars
-        env = worker["environment"]
         assert "DATABASE_URL" in env
         assert "OPENAI_API_KEY" in env
 
@@ -212,7 +194,7 @@ class TestDockerfileTargets:
         with open(dockerfile) as f:
             content = f.read()
 
-        required_targets = ["builder", "base", "api", "worker"]
+        required_targets = ["builder", "base", "api", "api-ui"]
 
         for target in required_targets:
             pattern = rf"FROM .+ AS {target}"
@@ -231,18 +213,18 @@ class TestDockerfileTargets:
         # Check for EXPOSE command
         assert "EXPOSE 8000" in api_section.group()
 
-    def test_worker_target_has_cmd(self) -> None:
-        """Verify worker target has proper CMD."""
-        dockerfile = Path(__file__).parent.parent / "Dockerfile"
-        with open(dockerfile) as f:
-            content = f.read()
+    def test_worker_target_removed(self) -> None:
+        """The worker stage was a placeholder and has been dropped."""
+        content = (Path(__file__).parent.parent / "Dockerfile").read_text()
+        assert "AS worker" not in content
 
-        # Find worker section
-        worker_section = re.search(r"FROM base AS worker.*?(?=FROM|\Z)", content, re.DOTALL)
-        assert worker_section, "Worker target not found"
-
-        # Check for CMD
-        assert "CMD" in worker_section.group()
+    def test_api_ui_target_bundles_frontend(self) -> None:
+        """api-ui is the optional single-container variant: api + built frontend served via VTT_STATIC_DIR."""
+        content = (Path(__file__).parent.parent / "Dockerfile").read_text()
+        section = re.search(r"FROM api AS api-ui.*?(?=FROM|\Z)", content, re.DOTALL)
+        assert section, "api-ui target not found"
+        assert "VTT_STATIC_DIR" in section.group()
+        assert "web-builder" in section.group()
 
 
 class TestDatabaseInitScript:

@@ -8,17 +8,16 @@ Engines
             When core releases it, replace the body of :func:`_local_engine` (and flip ``LOCAL_ENGINE_AVAILABLE``);
             nothing else in the server should need to change. See docs/DESIGN.md.
 
-Diarizers
----------
-``sherpa``    sherpa-onnx, CPU only, no token, no torch (default; extra ``sherpa``).
-``pyannote``  pyannote.audio, needs ``HF_TOKEN`` and torch (extra ``diarization``).
+Diarization
+-----------
+sherpa-onnx via core's ``SherpaDiarizer``: CPU only, no token, no torch (~46 MB models fetched on first use).
+It is the only backend; pyannote/torch was dropped to keep the image small.
 """
 
 from pathlib import Path
 from typing import Any, Protocol
 
 ENGINES = ("openai", "local")
-DIARIZERS = ("sherpa", "pyannote")
 
 _LOCAL_MSG = "The local (key-free) Whisper engine is not available yet; use engine=openai."
 
@@ -72,18 +71,8 @@ def validate_engine(name: str, api_key: str | None) -> None:
         raise ValueError(msg)
 
 
-def build_diarizer(backend: str, *, hf_token: str | None, device: str | None, num_speakers: int | None) -> Any:
-    """Instantiate the diarizer for ``backend`` (imports are lazy so the server starts without the extras)."""
-    if backend == "pyannote":
-        try:
-            from vtt_transcribe.diarization import SpeakerDiarizer
-        except ImportError as exc:  # pragma: no cover - depends on installed extras
-            msg = "pyannote diarization needs the 'diarization' extra (torch, pyannote.audio)"
-            raise EngineUnavailableError(msg) from exc
-        return SpeakerDiarizer(hf_token=hf_token, device=device or "auto")
-    try:
-        from vtt_transcribe.sherpa_diarization import SherpaDiarizer
-    except ImportError as exc:  # pragma: no cover - depends on installed extras
-        msg = "sherpa diarization needs the 'sherpa' extra (sherpa-onnx, numpy)"
-        raise EngineUnavailableError(msg) from exc
-    return SherpaDiarizer(hf_token=hf_token, device=device or "auto", num_speakers=num_speakers)
+def build_diarizer(*, num_speakers: int | None) -> Any:
+    """Instantiate the sherpa diarizer (imported lazily so tests can run without the models)."""
+    from vtt_transcribe.sherpa_diarization import SherpaDiarizer
+
+    return SherpaDiarizer(num_speakers=num_speakers)

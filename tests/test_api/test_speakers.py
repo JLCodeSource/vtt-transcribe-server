@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -205,8 +206,7 @@ class TestSpeakerEndpoints:
 
 
 class TestPipeline:
-    def test_transcribe_with_sherpa_diarization_needs_no_token(self, client, monkeypatch):
-        monkeypatch.delenv("HF_TOKEN", raising=False)
+    def test_transcribe_with_sherpa_diarization_needs_no_token(self, client):
         with (
             patch("vtt_server.routes.transcription.VideoTranscriber") as vt,
             patch(
@@ -222,10 +222,13 @@ class TestPipeline:
             )
             assert r.status_code == 200
             job_id = r.json()["job_id"]
-            seg = client.get(f"/api/jobs/{job_id}/speakers")
+            for _ in range(100):  # the job runs as a background task; wait for it instead of racing it
+                seg = client.get(f"/api/jobs/{job_id}/speakers")
+                if seg.status_code != 409:
+                    break
+                time.sleep(0.05)
         assert seg.status_code == 200
         assert [s["id"] for s in seg.json()["speakers"]] == ["SPEAKER_00", "SPEAKER_01"]
-        assert dia.call_args.args[1] == "sherpa"
         assert dia.call_args.args[-1] == 2
         assert client.delete(f"/api/jobs/{job_id}").status_code == 204
 
@@ -264,21 +267,16 @@ class TestEngineSeam:
         ids = {e["id"]: e for e in data["engines"]}
         assert ids["openai"]["available"] is True
         assert ids["local"]["available"] is False
-        assert data["diarizers"] == ["sherpa", "pyannote"]
+        assert "diarizers" not in data
 
     def test_local_engine_is_a_501_until_core_ships_it(self, client):
         r = client.post("/api/transcribe", files={"file": ("t.mp3", io.BytesIO(b"x"), "audio/mpeg")}, data={"engine": "local"})
         assert r.status_code == 501
         assert "not available yet" in r.json()["detail"]
 
-    def test_unknown_engine_and_diarizer_and_speaker_count(self, client):
+    def test_unknown_engine_and_speaker_count(self, client):
         f = {"file": ("t.mp3", io.BytesIO(b"x"), "audio/mpeg")}
         assert client.post("/api/transcribe", files=f, data={"engine": "nope", "api_key": "k"}).status_code == 400
-        f = {"file": ("t.mp3", io.BytesIO(b"x"), "audio/mpeg")}
-        assert (
-            client.post("/api/transcribe", files=f, data={"api_key": "k", "diarize": "true", "diarizer": "x"}).status_code
-            == 400
-        )
         f = {"file": ("t.mp3", io.BytesIO(b"x"), "audio/mpeg")}
         assert client.post("/api/diarize", files=f, data={"num_speakers": "99"}).status_code == 422
 

@@ -185,7 +185,7 @@ class TestAPITranscriptionCoverage:
         with pytest.raises(Exception) as exc_info:  # noqa: PT011, PT012
             import asyncio
 
-            asyncio.run(create_diarization_job(mock_file, hf_token="test"))
+            asyncio.run(create_diarization_job(mock_file))
 
         assert "422" in str(exc_info.value) or "filename" in str(exc_info.value).lower()
 
@@ -200,8 +200,7 @@ class TestAPITranscriptionCoverage:
         response = client.post(
             "/api/diarize",
             files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
-            data={"hf_token": "test-hf-token", "device": "cpu"},
-        )
+                    )
 
         assert response.status_code == 200
         job_id = response.json()["job_id"]  # noqa: F841
@@ -246,8 +245,7 @@ class TestAPITranscriptionCoverage:
         response = client.post(
             "/api/diarize",
             files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
-            data={"hf_token": "test-hf-token"},
-        )
+                    )
 
         job_id = response.json()["job_id"]
 
@@ -273,7 +271,7 @@ class TestTranscriptionAsyncPaths:
 
         # Run the async function with the diarizer mocked (no models in unit tests)
         with patch("vtt_server.routes.transcription.run_diarizer", return_value=[(0.0, 5.0, "SPEAKER_00")]):
-            asyncio.run(_process_diarization(job_id, b"fake audio data", "test.mp3", None, "cpu"))
+            asyncio.run(_process_diarization(job_id, b"fake audio data", "test.mp3"))
 
         # Verify job completed
         assert jobs[job_id]["status"] == "completed"
@@ -834,8 +832,7 @@ class TestProgressEventsInTranscription:
         response = client.post(
             "/api/diarize",
             files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
-            data={"hf_token": "test-token"},
-        )
+                    )
         job_id = response.json()["job_id"]
 
         # Verify job has progress_updates queue

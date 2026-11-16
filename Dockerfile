@@ -3,8 +3,10 @@
 # resolved in uv.lock. The CLI image lives in the public core repo.
 #
 # Build args:
-#   SYNC_ARGS  extra flags for `uv sync`. Default "--extra sherpa" = key-free CPU diarization
-#              (sherpa-onnx, ~46 MB models, no torch). Use "--extra diarization" to add pyannote/torch (large).
+# Targets:
+#   api     FastAPI server only (the frontend ships separately as its own nginx image, see frontend/Dockerfile)
+#   api-ui  same server with the built frontend bundled in and served at / (single container)
+# Diarization is sherpa-onnx (CPU, ~46 MB models fetched on first use, no torch, no token).
 
 # Build stage: resolve and install dependencies into /opt/venv
 FROM python:3.12-slim AS builder
@@ -16,15 +18,13 @@ RUN pip install --no-cache-dir uv
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_LINK_MODE=copy
 
-ARG SYNC_ARGS="--extra sherpa"
-
 # Dependency layer (cached until pyproject.toml / uv.lock change)
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --no-install-project ${SYNC_ARGS}
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Project source
 COPY vtt_server ./vtt_server
-RUN uv sync --frozen --no-dev --no-editable ${SYNC_ARGS}
+RUN uv sync --frozen --no-dev --no-editable
 
 # Runtime stage: minimal image with only runtime dependencies
 FROM python:3.12-slim AS base
@@ -32,9 +32,10 @@ FROM python:3.12-slim AS base
 # Configurable UID for non-root user (default 1000 for typical Linux desktops)
 ARG USER_UID=1000
 
-# Runtime system dependencies (ffmpeg for moviepy/Whisper audio handling, curl for healthchecks)
+# Runtime system dependencies: curl for healthchecks only. ffmpeg is NOT installed from apt (Debian's pulls in
+# ~450 MB of codec/GPU libraries); the static build bundled with imageio-ffmpeg (a moviepy dependency) is
+# linked onto PATH in the api stage instead.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -54,6 +55,9 @@ FROM base AS api
 
 COPY --from=builder /opt/venv /opt/venv
 
+# core and the speaker-clip endpoint call a plain `ffmpeg`; reuse the static binary already in the venv
+RUN ln -s /opt/venv/lib/python3.*/site-packages/imageio_ffmpeg/binaries/ffmpeg-* /usr/local/bin/ffmpeg && ffmpeg -version | head -1
+
 RUN mkdir -p /app/uploads /app/logs /app/models /app/jobs && \
     chown -R vttuser:vttuser /app
 
@@ -65,19 +69,18 @@ EXPOSE 8000
 CMD ["uvicorn", "vtt_server.app:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # ============================================================================
-# Worker Target - for background transcription jobs
+# Frontend build (only used by the api-ui target)
 # ============================================================================
-FROM base AS worker
+FROM node:24-alpine AS web-builder
+WORKDIR /web
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
 
-COPY --from=builder /opt/venv /opt/venv
-
-RUN mkdir -p /app/uploads /app/logs && \
-    chown -R vttuser:vttuser /app
-
-WORKDIR /app
-USER vttuser
-
-# TODO: Uncomment when worker module is implemented
-# CMD ["python", "-m", "vtt_server.worker"]
-# Placeholder: long-running no-op to prevent restart loops
-CMD ["sleep", "infinity"]
+# ============================================================================
+# API + bundled UI - single container
+# ============================================================================
+FROM api AS api-ui
+COPY --from=web-builder /web/dist /app/static
+ENV VTT_STATIC_DIR=/app/static

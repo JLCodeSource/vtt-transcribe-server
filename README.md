@@ -22,8 +22,8 @@ The server package is named **`vtt_server`** (it used to be `vtt_transcribe.api`
 
 ## How the core is consumed
 
-`vtt-transcribe>=0.5.0` from PyPI (transcription, translation, and the key-free sherpa-onnx diarizer). Extras forward to
-the core's: `sherpa` (small, CPU, default) and `diarization` (adds pyannote/torch; large, needs `HF_TOKEN`).
+`vtt-transcribe[sherpa]>=0.5.0` from PyPI (transcription, translation, and the key-free sherpa-onnx diarizer: CPU,
+no torch, no token). There are no optional extras; pyannote/torch was dropped to keep the install and image small.
 See [docs/DESIGN.md](docs/DESIGN.md) for the target API, job model and deployment plan.
 
 ## Run locally
@@ -31,14 +31,13 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the target API, job model and deploymen
 Requirements: Python >=3.11, [uv](https://docs.astral.sh/uv/), ffmpeg (for real transcription).
 
 ```bash
-uv sync --extra sherpa          # server + dev deps + key-free speaker diarization (small)
-uv sync --extra diarization     # optional: also pyannote/torch via vtt-transcribe[diarization] (large)
+uv sync                         # server + dev deps + key-free speaker diarization
 cp .env.example .env
 uv run python scripts/generate_secrets.py   # fill SECRET_KEY / ENCRYPTION_KEY / SESSION_SECRET in .env
 uv run vtt-server               # dev server on :8000 (docs at /docs)
 ```
 
-Full stack (Postgres + API + worker, `--profile frontend` adds the web app): see
+Full stack (Postgres + API, `--profile frontend` adds the web app): see
 [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md).
 
 ```bash
@@ -46,8 +45,14 @@ docker compose up -d --build
 docker compose --profile frontend up -d --build
 ```
 
-The `Dockerfile` has `api` and `worker` targets; it `uv sync`s the lockfile. The default build includes the `sherpa` extra;
-add pyannote/torch with `--build-arg SYNC_ARGS="--extra diarization"`.
+The `Dockerfile` has two targets (~530 MB each; ffmpeg is the static binary from the venv, not the apt package):
+
+```bash
+docker build --target api    -t vtt-server .      # API only; the frontend ships as its own nginx image (frontend/Dockerfile)
+docker build --target api-ui -t vtt-server-ui .   # API + built frontend served at / (single container)
+```
+
+The frontend always calls relative `/api/...`, so it works unchanged behind nginx, behind the API, or via the Vite dev proxy.
 
 ## Tests and lint
 

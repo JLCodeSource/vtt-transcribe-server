@@ -9,10 +9,10 @@ Status legend: **[done]** in this repo now, **[seam]** stubbed behind a marked i
 
 ## 1. Core dependency
 
-`vtt-transcribe>=0.5.0` from PyPI. Extras forward to the core's: `sherpa` (sherpa-onnx, CPU, ~46 MB models, no token, no
-torch: the default and what the image ships) and `diarization` (adds pyannote/torch; large, needs `HF_TOKEN`). The server
-never re-implements transcription, translation or diarization; it orchestrates core classes
-(`VideoTranscriber`, `AudioTranslator`, `SherpaDiarizer` / `SpeakerDiarizer`) and owns jobs, speaker review and exports.
+`vtt-transcribe[sherpa]>=0.5.0` from PyPI (sherpa-onnx, CPU, ~46 MB models, no token, no torch). There are no optional
+extras: pyannote/torch (the core's `diarization` extra) was dropped deliberately to keep one diarizer, no HF token and a
+small image. The server never re-implements transcription, translation or diarization; it orchestrates core classes
+(`VideoTranscriber`, `AudioTranslator`, `SherpaDiarizer`) and owns jobs, speaker review and exports.
 
 ## 2. Job model
 
@@ -43,9 +43,9 @@ All under `/api`, JSON unless noted. Job ids are unguessable UUIDs; the existing
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /engines` | engines (`openai`, `local`) with `available`, diarizers, `max_speakers`; drives the UI picker **[done]** |
-| `POST /transcribe` (multipart) | `file`, `engine`=openai\|local, `api_key` (openai only), `diarize`, `diarizer`=sherpa\|pyannote, `num_speakers`, `hf_token`/`device` (pyannote), `translate_to` **[done]** |
-| `POST /diarize` (multipart) | diarization only: `file`, `diarizer`, `num_speakers`; result is text-less segments **[done]** |
+| `GET /engines` | engines (`openai`, `local`) with `available`, `max_speakers`; drives the UI picker **[done]** |
+| `POST /transcribe` (multipart) | `file`, `engine`=openai\|local, `api_key` (openai only), `diarize`, `num_speakers`, `translate_to` **[done]** |
+| `POST /diarize` (multipart) | diarization only: `file`, `num_speakers`; result is text-less segments **[done]** |
 | `GET /jobs/{id}` | status + options (no bulky fields) **[done]**; `WS /ws/jobs/{id}` pushes progress/result **[done]** |
 | `GET /jobs/{id}/segments` | structured transcript: segments (`text`, `translation`, `speaker_id`, display `speaker`) + speaker summaries **[done]** |
 | `POST /jobs/{id}/translate` `{target_language, api_key}` | adds `translation` per segment via core's `AudioTranslator`; 502 if the model returns a different line count **[done]** |
@@ -67,8 +67,8 @@ Decisions worth knowing:
   with a corrected `num_speakers` for the automatic route. If core later exposes embeddings (or a `split` helper) the
   endpoint can grow an `auto: true` mode without changing its shape.
 - **Defaults follow the web app**: unnamed speakers are `Speaker N`; clips are the 3 longest turns capped at 8 s.
-- **No API key for diarization**: sherpa needs nothing, so the old "HF token required" rule now applies only to
-  `diarizer=pyannote`. `api_key` is required only for `engine=openai`.
+- **No API key or token for diarization**: sherpa needs nothing, so the old "HF token required" rule is gone (legacy
+  `hf_token`/`device`/`diarizer` form fields are ignored). `api_key` is required only for `engine=openai`.
 - **Models** download on first use into `VTT_MODEL_DIR` (`/app/models`; mount a volume or bake them into the image
   at deploy time).
 
@@ -104,8 +104,11 @@ is **[todo]**, only worth it once a third surface exists.
 
 ## 6. Deployment
 
-Single image, built from this repo's `Dockerfile` (`api` target): target: FastAPI serves the built frontend from the same container **[todo]** (today the frontend is a separate nginx image)
-(frontend nginx stays optional via the compose `frontend` profile for dev). Defaults: SQLite for a single small host,
+One Dockerfile, two interchangeable shapes **[done]**: `api` (API only; the frontend is a separate nginx image, `compose --profile frontend`)
+and `api-ui` (same API with the built frontend bundled and served at `/` via `VTT_STATIC_DIR`; single container, recommended for
+prod). The frontend only uses relative `/api` and `/ws` URLs, so both work unchanged. Both images are ~530 MB (was ~970 MB: ffmpeg
+now comes from the static binary already shipped by `imageio-ffmpeg` instead of the ~450 MB apt package). There is no `worker`
+image: it was a placeholder; add one back when background jobs move out of process. Defaults: SQLite for a single small host,
 Postgres via compose when needed; `SECRET_KEY`, `ENCRYPTION_KEY`, `SESSION_SECRET` from the host's secret store.
 
 - **Host**: Fly.io (one `shared-cpu` machine, volume mounted at `/app/models` and `/app/jobs`) or a small VPS running
@@ -128,3 +131,4 @@ Postgres via compose when needed; `SECRET_KEY`, `ENCRYPTION_KEY`, `SESSION_SECRE
 3. Prod deploy config + enabling CI/CD (section 6) once the full solution is ready.
 4. Optional: embedding-based auto-split if core exposes embeddings; local translation if core adds it.
 5. Frontend e2e (Playwright) coverage for the review flow against a live backend.
+6. If pyannote quality is ever needed again: re-add it as a separate image variant (core's `diarization` extra), not a default.

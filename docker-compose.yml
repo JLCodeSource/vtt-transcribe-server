@@ -78,45 +78,6 @@ services:
     networks:
       - vtt-network
 
-  # Background Worker for Transcription Jobs
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: worker
-    container_name: vtt-transcribe-worker
-    restart: unless-stopped
-    environment:
-      # Database
-      DATABASE_URL: postgresql://${POSTGRES_USER:-vtt_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-vtt_transcribe}
-      
-      # OpenAI API
-      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set in .env file}
-      
-      # Worker Configuration
-      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
-      WORKER_MAX_TASKS_PER_CHILD: ${WORKER_MAX_TASKS_PER_CHILD:-100}
-      
-      # Storage
-      UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
-      
-      # Logging
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LOG_FORMAT: ${LOG_FORMAT:-json}
-      
-      # Optional: Diarization support
-      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
-    volumes:
-      - upload_data:/app/uploads
-      - ./logs:/app/logs
-    depends_on:
-      db:
-        condition: service_healthy
-      api:
-        condition: service_healthy
-    networks:
-      - vtt-network
-
   # Frontend (Svelte + Vite + TypeScript)
   frontend:
     build:
