@@ -157,7 +157,6 @@ class TestAPITranscriptionCoverage:
 
     def test_transcribe_with_missing_filename(self) -> None:
         """Test transcribe endpoint checks for filename (line 39)."""
-        from fastapi import UploadFile
 
         from vtt_server.routes.transcription import create_transcription_job
 
@@ -175,7 +174,6 @@ class TestAPITranscriptionCoverage:
 
     def test_diarize_endpoint_with_missing_filename(self) -> None:
         """Test diarize endpoint checks for filename (line 94)."""
-        from fastapi import UploadFile
 
         from vtt_server.routes.transcription import create_diarization_job
 
@@ -268,21 +266,14 @@ class TestTranscriptionAsyncPaths:
 
     def test_process_diarization_complete_path(self) -> None:
         """Test _process_diarization async function (lines 126-138)."""
-        from unittest.mock import AsyncMock
-
         from vtt_server.routes.transcription import _process_diarization, jobs
-
-        # Create an async mock UploadFile
-        test_content = b"fake audio data"
-        mock_file = AsyncMock(spec=UploadFile)
-        mock_file.filename = "test.mp3"
-        mock_file.read = AsyncMock(return_value=test_content)
 
         job_id = "test-job-id"
         jobs[job_id] = {"status": "pending", "job_id": job_id}
 
-        # Run the async function using asyncio.run
-        asyncio.run(_process_diarization(job_id, mock_file, "test-token", "cpu"))
+        # Run the async function with the diarizer mocked (no models in unit tests)
+        with patch("vtt_server.routes.transcription.run_diarizer", return_value=[(0.0, 5.0, "SPEAKER_00")]):
+            asyncio.run(_process_diarization(job_id, b"fake audio data", "test.mp3", None, "cpu"))
 
         # Verify job completed
         assert jobs[job_id]["status"] == "completed"
@@ -341,7 +332,7 @@ class TestTranscriptionAsyncPaths:
 
             # Verify lines 168-169 executed (status completed, result set)
             assert jobs[job_id]["status"] == "completed"
-            assert jobs[job_id]["result"] == "[00:00 - 00:05] Test transcript"
+            assert jobs[job_id]["result"] == "[00:00:00 - 00:00:05] Test transcript"
 
 
 class TestDetectLanguageEndpoint:
@@ -486,7 +477,6 @@ class TestDetectLanguageErrorHandling:
         import asyncio
         import io
 
-        from fastapi import UploadFile
         from fastapi.exceptions import HTTPException
 
         from vtt_server.routes.transcription import detect_language

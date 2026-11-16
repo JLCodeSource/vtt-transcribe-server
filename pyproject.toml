@@ -16,10 +16,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    # Core transcription package. PyPI 0.3.1 (Feb 2026) predates logging_config/translator
-    # and torch 2.15, so we pin the public repo at a commit. Switch to "vtt-transcribe>=X"
-    # once a release containing these modules is published.
-    "vtt-transcribe @ git+https://github.com/JLCodeSource/vtt-transcribe@1cadf06c8529e63177a5f0a230772db91916aa1b",
+    "vtt-transcribe>=0.5.0",  # core transcription/translation/diarization package (PyPI)
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
     "python-multipart>=0.0.20",  # File upload support
@@ -37,10 +34,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Speaker diarization: forwards to the core's extra (pyannote.audio, torch, torchaudio, torchcodec)
-diarization = [
-    "vtt-transcribe[diarization] @ git+https://github.com/JLCodeSource/vtt-transcribe@1cadf06c8529e63177a5f0a230772db91916aa1b",
-]
+# Speaker diarization. "sherpa" is the default backend: CPU-only ONNX, ~46 MB models, no HF token.
+sherpa = ["vtt-transcribe[sherpa]>=0.5.0"]
+# Full set incl. the optional pyannote backend (torch; large, needs HF_TOKEN)
+diarization = ["vtt-transcribe[diarization]>=0.5.0"]
 
 [project.scripts]
 vtt-server = "vtt_server.server:main"
@@ -70,9 +67,6 @@ testpaths = ["tests"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["vtt_server"]

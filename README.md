@@ -22,24 +22,17 @@ The server package is named **`vtt_server`** (it used to be `vtt_transcribe.api`
 
 ## How the core is consumed
 
-PyPI `vtt-transcribe` 0.3.1 (Feb 2026) is too old: it lacks `vtt_transcribe.logging_config` and
-`vtt_transcribe.translator`, and predates the torch 2.15 / Python >=3.11 move. So `pyproject.toml` pins the public
-GitHub repo at a commit:
-
-```
-vtt-transcribe @ git+https://github.com/JLCodeSource/vtt-transcribe@1cadf06c8529e63177a5f0a230772db91916aa1b
-```
-
-Once a core release containing these modules is on PyPI, replace it with `vtt-transcribe>=X.Y` (and the same for the
-`diarization` extra) and re-run `uv lock`. Bump the pin deliberately when you need newer core behaviour.
+`vtt-transcribe>=0.5.0` from PyPI (transcription, translation, and the key-free sherpa-onnx diarizer). Extras forward to
+the core's: `sherpa` (small, CPU, default) and `diarization` (adds pyannote/torch; large, needs `HF_TOKEN`).
+See [docs/DESIGN.md](docs/DESIGN.md) for the target API, job model and deployment plan.
 
 ## Run locally
 
-Requirements: Python >=3.11, [uv](https://docs.astral.sh/uv/), git, ffmpeg (for real transcription).
+Requirements: Python >=3.11, [uv](https://docs.astral.sh/uv/), ffmpeg (for real transcription).
 
 ```bash
-uv sync                         # server + dev deps (core installed from the pinned git commit)
-uv sync --extra diarization     # optional: pyannote/torch via vtt-transcribe[diarization] (large)
+uv sync --extra sherpa          # server + dev deps + key-free speaker diarization (small)
+uv sync --extra diarization     # optional: also pyannote/torch via vtt-transcribe[diarization] (large)
 cp .env.example .env
 uv run python scripts/generate_secrets.py   # fill SECRET_KEY / ENCRYPTION_KEY / SESSION_SECRET in .env
 uv run vtt-server               # dev server on :8000 (docs at /docs)
@@ -53,8 +46,8 @@ docker compose up -d --build
 docker compose --profile frontend up -d --build
 ```
 
-The `Dockerfile` has `api` and `worker` targets; it `uv sync`s the lockfile (git is needed in the builder to fetch the
-core). Build with diarization: `--build-arg SYNC_ARGS="--extra diarization"`.
+The `Dockerfile` has `api` and `worker` targets; it `uv sync`s the lockfile. The default build includes the `sherpa` extra;
+add pyannote/torch with `--build-arg SYNC_ARGS="--extra diarization"`.
 
 ## Tests and lint
 
@@ -69,7 +62,7 @@ No make/uv/node on the host? Use containers:
 
 ```bash
 docker run --rm -v "$PWD":/w -w /w -e UV_PROJECT_ENVIRONMENT=/opt/venv python:3.12-slim bash -c \
-  'apt-get update -qq && apt-get install -y -qq git && pip install -q uv && uv sync --frozen && /opt/venv/bin/pytest -q -p no:cacheprovider && /opt/venv/bin/ruff check .'
+  'pip install -q uv && uv sync --frozen && /opt/venv/bin/pytest -q -p no:cacheprovider && /opt/venv/bin/ruff check .'
 docker run --rm -v "$PWD/frontend":/w -w /w node:22-slim bash -c 'npm ci && npm run test'
 ```
 

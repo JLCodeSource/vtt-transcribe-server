@@ -1,8 +1,10 @@
 """Transcription API endpoints."""
 
 import asyncio
+import json
 import os
 import re
+import shutil
 import tempfile
 import time
 import uuid
@@ -14,6 +16,15 @@ from fastapi.responses import PlainTextResponse
 from vtt_transcribe.logging_config import get_logger
 from vtt_transcribe.transcriber import VideoTranscriber
 from vtt_transcribe.translator import AudioTranslator
+
+from vtt_server import speakers
+from vtt_server.engines import (
+    DIARIZERS,
+    EngineUnavailableError,
+    build_diarizer,
+    engine_info,
+    validate_engine,
+)
 
 router = APIRouter(prefix="/api", tags=["transcription"])
 logger = get_logger(__name__)
@@ -75,69 +86,111 @@ MAX_FILE_SIZE = 100 * 1024 * 1024
 # A typical transcription job emits ~10-20 progress events, so 100 is generous
 MAX_PROGRESS_QUEUE_SIZE = 100
 
+# Upper bound for an explicit speaker count
+MAX_SPEAKERS = 12
+
 # Supported file extensions
 SUPPORTED_EXTENSIONS = {".mp3", ".mp4", ".wav", ".m4a", ".ogg", ".mpeg", ".mpga", ".webm"}
+
+
+def _job_dir(job_id: str) -> Path:
+    """Directory holding a job's uploaded audio (kept so speaker sample clips and re-diarization work)."""
+    return Path(os.environ.get("VTT_DATA_DIR") or Path(tempfile.gettempdir()) / "vtt-jobs") / job_id
+
+
+def _save_audio(job_id: str, content: bytes, filename: str) -> Path:
+    directory = _job_dir(job_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"input{Path(filename).suffix.lower()}"
+    path.write_bytes(content)
+    jobs[job_id]["audio_path"] = str(path)
+    return path
+
+
+def purge_job(job_id: str) -> None:
+    """Forget a job and delete its stored audio."""
+    jobs.pop(job_id, None)
+    shutil.rmtree(_job_dir(job_id), ignore_errors=True)
+
+
+def _check_engine(engine: str, api_key: str | None) -> None:
+    try:
+        validate_engine(engine, api_key)
+    except EngineUnavailableError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422 if "api_key" in str(exc) else 400, detail=str(exc)) from exc
+
+
+def check_diarizer(diarizer: str, hf_token: str | None) -> str | None:
+    """Validate the diarizer choice; returns the HF token to use (pyannote only, else None)."""
+    if diarizer not in DIARIZERS:
+        raise HTTPException(status_code=400, detail=f"Unknown diarizer: {diarizer}. Choose one of: {', '.join(DIARIZERS)}")
+    if diarizer != "pyannote":
+        return None
+    hf_token = _get_hf_token(hf_token)
+    if not hf_token:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "HuggingFace token required for the pyannote diarizer. "
+                "Provide hf_token or set HF_TOKEN, or use diarizer=sherpa (no token needed)."
+            ),
+        )
+    return hf_token
+
+
+def validate_num_speakers(num_speakers: int | None) -> None:
+    if num_speakers is not None and not 1 <= num_speakers <= MAX_SPEAKERS:
+        raise HTTPException(status_code=422, detail=f"num_speakers must be between 1 and {MAX_SPEAKERS}")
+
+
+@router.get("/engines")
+async def list_engines() -> dict[str, Any]:
+    """Selectable transcription engines and diarizers (drives the frontend's engine picker)."""
+    return {"engines": engine_info(), "diarizers": list(DIARIZERS), "max_speakers": MAX_SPEAKERS}
 
 
 @router.post("/transcribe")
 async def create_transcription_job(
     file: UploadFile = File(...),
-    api_key: str = Form(...),
+    api_key: str | None = Form(None),
     diarize: bool = Form(False),  # noqa: FBT001, FBT003
     hf_token: str | None = Form(None),
     device: str | None = Form(None),
     translate_to: str | None = Form(None),
+    engine: str = Form("openai"),
+    diarizer: str = Form("sherpa"),
+    num_speakers: int | None = Form(None),
 ) -> dict[str, str]:
     """Create a new transcription job.
 
     Args:
         file: Audio or video file
-        api_key: OpenAI API key
+        api_key: OpenAI API key (required for ``engine=openai``)
         diarize: Enable speaker diarization
-        hf_token: HuggingFace token (optional, falls back to HF_TOKEN environment variable)
-        device: Device for diarization (auto/cpu/cuda)
+        hf_token: HuggingFace token (pyannote diarizer only; falls back to HF_TOKEN)
+        device: Device for the pyannote diarizer (auto/cpu/cuda); sherpa always runs on CPU
         translate_to: Optional target language for translation (e.g., "Spanish", "French")
+        engine: ``openai`` or ``local`` (local is a stub until core ships it; returns 501)
+        diarizer: ``sherpa`` (default, no token) or ``pyannote``
+        num_speakers: Known speaker count (sherpa); detected automatically when omitted
 
     Returns:
         Job ID and status
-
-    Note:
-        For diarization, provide hf_token parameter OR set HF_TOKEN environment variable.
-        Environment variable is recommended for security when using the web UI.
     """
     logger.info(
         "Creating transcription job",
-        extra={
-            "file_name": file.filename,
-            "diarize": diarize,
-            "device": device,
-            "translate_to": translate_to,
-        },
+        extra={"file_name": file.filename, "diarize": diarize, "engine": engine, "diarizer": diarizer},
     )
 
     if not file.filename:
         logger.warning("Job creation failed: missing filename")
         raise HTTPException(status_code=422, detail="File must have a filename")
 
-    # If diarization is requested, ensure HF token is available (from parameter or environment)
-    if diarize:
-        hf_token = _get_hf_token(hf_token)
-        if not hf_token:
-            logger.warning(
-                "Job creation failed: diarization requested without HF token",
-                extra={"file_name": file.filename},
-            )
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "HuggingFace token required for diarization. "
-                    "Provide hf_token parameter or set HF_TOKEN environment variable."
-                ),
-            )
-        logger.info(
-            "Diarization enabled with HF token",
-            extra={"file_name": file.filename, "has_hf_token": True},
-        )
+    _check_engine(engine, api_key)
+    hf_token = check_diarizer(diarizer, hf_token) if diarize else None
+    validate_num_speakers(num_speakers)
 
     # Validate file extension
     file_ext = Path(file.filename).suffix.lower()
@@ -157,11 +210,7 @@ async def create_transcription_job(
         max_mb = MAX_FILE_SIZE // (1024 * 1024)
         logger.warning(
             "Job creation failed: file too large",
-            extra={
-                "file_name": file.filename,
-                "file_size_bytes": len(content),
-                "max_size_bytes": MAX_FILE_SIZE,
-            },
+            extra={"file_name": file.filename, "file_size_bytes": len(content), "max_size_bytes": MAX_FILE_SIZE},
         )
         raise HTTPException(
             status_code=413,
@@ -172,11 +221,7 @@ async def create_transcription_job(
 
     logger.info(
         "Transcription job created successfully",
-        extra={
-            "job_id": job_id,
-            "file_name": file.filename,
-            "file_size_mb": round(len(content) / (1024 * 1024), 2),
-        },
+        extra={"job_id": job_id, "file_name": file.filename, "file_size_mb": round(len(content) / (1024 * 1024), 2)},
     )
 
     jobs[job_id] = {
@@ -184,8 +229,11 @@ async def create_transcription_job(
         "status": "pending",
         "filename": file.filename,
         "file_size": len(content),
+        "engine": engine,
         "diarize": diarize,
-        "has_hf_token": bool(hf_token) if diarize else False,
+        "diarizer": diarizer if diarize else None,
+        "num_speakers": num_speakers if diarize else None,
+        "has_hf_token": bool(hf_token),
         "device": device if diarize else None,
         "translate_to": translate_to,
         # Bounded queue for progress updates
@@ -193,7 +241,19 @@ async def create_transcription_job(
     }
 
     task = asyncio.create_task(
-        _process_transcription(job_id, content, file.filename or "audio.mp3", api_key, diarize, hf_token, device, translate_to)
+        _process_transcription(
+            job_id,
+            content,
+            file.filename or "audio.mp3",
+            api_key,
+            diarize,
+            hf_token,
+            device,
+            translate_to,
+            engine=engine,
+            diarizer=diarizer,
+            num_speakers=num_speakers,
+        )
     )
     _ = task
 
@@ -210,8 +270,17 @@ async def get_job_status(job_id: str) -> dict[str, Any]:
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Return job data excluding progress_updates queue (not JSON serializable)
-    return {k: v for k, v in jobs[job_id].items() if k != "progress_updates"}
+    # Exclude non-serialisable / bulky internals; speaker data has its own endpoints
+    hidden = {"progress_updates", "segments", "speaker_names", "audio_path", "raw_transcript"}
+    return {k: v for k, v in jobs[job_id].items() if k not in hidden}
+
+
+@router.delete("/jobs/{job_id}", status_code=204)
+async def delete_job(job_id: str) -> None:
+    """Delete a job and its stored audio."""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    await asyncio.to_thread(purge_job, job_id)
 
 
 @router.post("/detect-language")
@@ -308,46 +377,43 @@ async def create_diarization_job(
     file: UploadFile = File(...),
     hf_token: str | None = Form(None),
     device: str | None = Form(None),
+    diarizer: str = Form("sherpa"),
+    num_speakers: int | None = Form(None),
 ) -> dict[str, str]:
-    """Create a diarization-only job.
+    """Create a diarization-only job (who speaks when; no transcript, no API key).
 
     Args:
         file: Audio or video file
-        hf_token: HuggingFace token (optional, falls back to HF_TOKEN environment variable)
-        device: Device for diarization (auto/cpu/cuda)
+        hf_token: HuggingFace token (pyannote diarizer only; falls back to HF_TOKEN)
+        device: Device for the pyannote diarizer (auto/cpu/cuda)
+        diarizer: ``sherpa`` (default, no token) or ``pyannote``
+        num_speakers: Known speaker count (sherpa); detected automatically when omitted
 
     Returns:
         Job ID and status
-
-    Note:
-        Provide hf_token parameter OR set HF_TOKEN environment variable.
-        Environment variable is recommended for security.
     """
     if not file.filename:
         raise HTTPException(status_code=422, detail="File must have a filename")
 
-    # Get HF token from parameter or environment
-    hf_token = _get_hf_token(hf_token)
-    if not hf_token:
-        raise HTTPException(
-            status_code=400,
-            detail="HuggingFace token required. Provide hf_token parameter or set HF_TOKEN environment variable.",
-        )
+    hf_token = check_diarizer(diarizer, hf_token)
+    validate_num_speakers(num_speakers)
 
     job_id = str(uuid.uuid4())
-
     jobs[job_id] = {
         "job_id": job_id,
         "status": "pending",
         "filename": file.filename,
         "diarize_only": True,
-        "has_hf_token": True,
+        "diarizer": diarizer,
+        "num_speakers": num_speakers,
+        "has_hf_token": bool(hf_token),
         "device": device,
         # Bounded queue for progress updates
         "progress_updates": asyncio.Queue(maxsize=MAX_PROGRESS_QUEUE_SIZE),
     }
 
-    task = asyncio.create_task(_process_diarization(job_id, file, hf_token, device))
+    content = await file.read()
+    task = asyncio.create_task(_process_diarization(job_id, content, file.filename, hf_token, device, diarizer, num_speakers))
     _ = task
 
     return {
@@ -357,33 +423,45 @@ async def create_diarization_job(
     }
 
 
-async def _process_diarization(job_id: str, file: UploadFile, _hf_token: str, _device: str | None = None) -> None:
+def run_diarizer(
+    audio_path: Path, diarizer: str, hf_token: str | None, device: str | None, num_speakers: int | None
+) -> list[tuple[float, float, str]]:
+    """Blocking: run the chosen diarizer over a file (call via ``asyncio.to_thread``)."""
+    backend = build_diarizer(diarizer, hf_token=hf_token, device=device, num_speakers=num_speakers)
+    return backend.diarize_audio(audio_path)
+
+
+def set_segments(job: dict[str, Any], segments: list[dict[str, Any]]) -> None:
+    """Store structured segments and refresh the human-readable ``result`` (names applied)."""
+    job["segments"] = segments
+    job.setdefault("speaker_names", {})
+    translated = bool(job.get("translated_to")) and any(s.get("translation") for s in segments)
+    job["result"] = speakers.to_result(speakers.labelled(segments, job["speaker_names"], translated=translated))
+
+
+async def _process_diarization(
+    job_id: str,
+    content: bytes,
+    filename: str,
+    hf_token: str | None,
+    device: str | None = None,
+    diarizer: str = "sherpa",
+    num_speakers: int | None = None,
+) -> None:
     """Process diarization-only job asynchronously."""
-    # Note: hf_token and device will be used when integrating pyannote.audio
     try:
         jobs[job_id]["status"] = "processing"
         _emit_progress(job_id, "Starting diarization", "diarization")
+        audio_path = _save_audio(job_id, content, filename)  # small sync write, as before
 
-        filename = file.filename or "audio.mp3"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp:
-            content = await file.read()
-            tmp.write(content)
-            tmp_path = Path(tmp.name)
+        _emit_progress(job_id, "Processing audio for speaker segments", "diarization")
+        turns = await asyncio.to_thread(run_diarizer, audio_path, diarizer, hf_token, device, num_speakers)
 
-        try:
-            # Note: Actual diarization logic would go here
-            # For now, placeholder result
-            _emit_progress(job_id, "Processing audio for speaker segments", "diarization")
-            result = f"Diarization result for {filename}"
-
-            jobs[job_id]["status"] = "completed"
-            jobs[job_id]["result"] = result
-            _emit_progress(job_id, "Diarization complete", "diarization")
-
-        finally:
-            await asyncio.to_thread(tmp_path.unlink, missing_ok=True)
-
+        set_segments(jobs[job_id], speakers.turns_to_segments(turns))
+        jobs[job_id]["status"] = "completed"
+        _emit_progress(job_id, "Diarization complete", "diarization")
     except Exception as e:
+        logger.exception("Diarization job failed", extra={"job_id": job_id})
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["error"] = str(e)
         _emit_progress(job_id, f"Diarization failed: {e}", "error")
@@ -393,87 +471,116 @@ async def _process_transcription(
     job_id: str,
     content: bytes,
     filename: str,
-    api_key: str,
-    _diarize: bool = False,  # noqa: FBT001, FBT002
-    _hf_token: str | None = None,
-    _device: str | None = None,
+    api_key: str | None,
+    diarize: bool = False,  # noqa: FBT001, FBT002
+    hf_token: str | None = None,
+    device: str | None = None,
     translate_to: str | None = None,
+    *,
+    engine: str = "openai",
+    diarizer: str = "sherpa",
+    num_speakers: int | None = None,
 ) -> None:
-    """Process transcription job asynchronously."""
+    """Process transcription job asynchronously: transcribe -> (diarize) -> (translate)."""
     start_time = time.time()
-
     logger.info(
         "Starting transcription job processing",
-        extra={
-            "job_id": job_id,
-            "file_name": filename,
-            "translate_to": translate_to,
-        },
+        extra={"job_id": job_id, "file_name": filename, "translate_to": translate_to, "engine": engine},
     )
 
-    # Note: diarize, hf_token, device will be used when integrating diarization
     try:
         jobs[job_id]["status"] = "processing"
         _emit_progress(job_id, "Starting transcription", "info")
+        audio_path = _save_audio(job_id, content, filename)  # small sync write, as before
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp:
-            tmp.write(content)
-            tmp_path = Path(tmp.name)
+        # ``engine=local`` is a seam (see vtt_server/engines.py); validate_engine already rejected it at the API
+        # boundary, this keeps direct callers honest too.
+        validate_engine(engine, api_key)
+        transcriber = VideoTranscriber(api_key)
 
-        try:
-            transcriber = VideoTranscriber(api_key)
+        # Detect language before transcription
+        _emit_progress(job_id, "Detecting language", "language")
+        detected_language = await asyncio.to_thread(transcriber.detect_language, audio_path)
+        jobs[job_id]["detected_language"] = detected_language
+        _emit_progress(job_id, f"Detected language: {detected_language}", "language")
 
-            # Detect language before transcription
-            _emit_progress(job_id, "Detecting language", "language")
-            detected_language = await asyncio.to_thread(transcriber.detect_language, tmp_path)
-            jobs[job_id]["detected_language"] = detected_language
-            _emit_progress(job_id, f"Detected language: {detected_language}", "language")
+        # Transcribe audio
+        _emit_progress(job_id, "Transcribing audio", "info")
+        result = await asyncio.to_thread(transcriber.transcribe, audio_path)
+        _emit_progress(job_id, "Transcription complete", "info")
+        jobs[job_id]["raw_transcript"] = result
 
-            # Transcribe audio
-            _emit_progress(job_id, "Transcribing audio", "info")
-            result = await asyncio.to_thread(transcriber.transcribe, tmp_path)
-            _emit_progress(job_id, "Transcription complete", "info")
+        if diarize:
+            _emit_progress(job_id, "Identifying speakers", "diarization")
+            turns = await asyncio.to_thread(run_diarizer, audio_path, diarizer, hf_token, device, num_speakers)
+            result = label_transcript(result, turns)
+            _emit_progress(job_id, "Speaker identification complete", "diarization")
 
-            # If translation requested, translate the transcript
-            if translate_to:
-                _emit_progress(job_id, f"Translating to {translate_to}", "translation")
-                translator = AudioTranslator(api_key)
-                result = await asyncio.to_thread(
-                    translator.translate_transcript, result, translate_to, preserve_timestamps=True
-                )
-                jobs[job_id]["translated_to"] = translate_to
-                _emit_progress(job_id, f"Translation to {translate_to} complete", "translation")
-
-            jobs[job_id]["status"] = "completed"
+        segments = speakers.parse_transcript(result)
+        if segments:
+            set_segments(jobs[job_id], segments)
+        else:  # engine returned something unstructured; keep it verbatim
             jobs[job_id]["result"] = result
-            _emit_progress(job_id, "Job completed successfully", "info")
 
-            duration = time.time() - start_time
-            logger.info(
-                "Transcription job completed successfully",
-                extra={
-                    "job_id": job_id,
-                    "duration_seconds": round(duration, 2),
-                    "result_length": len(result),
-                },
-            )
+        # If translation requested, translate the transcript
+        if translate_to:
+            _emit_progress(job_id, f"Translating to {translate_to}", "translation")
+            await translate_job_segments(jobs[job_id], api_key, translate_to)
+            _emit_progress(job_id, f"Translation to {translate_to} complete", "translation")
 
-        finally:
-            await asyncio.to_thread(tmp_path.unlink, missing_ok=True)
+        jobs[job_id]["status"] = "completed"
+        _emit_progress(job_id, "Job completed successfully", "info")
 
-    except Exception as e:
-        duration = time.time() - start_time
-        logger.exception(
-            "Transcription job failed",
+        logger.info(
+            "Transcription job completed successfully",
             extra={
                 "job_id": job_id,
-                "duration_seconds": round(duration, 2),
-                "error": str(e),
+                "duration_seconds": round(time.time() - start_time, 2),
+                "result_length": len(jobs[job_id].get("result", "")),
             },
+        )
+
+    except Exception as e:
+        logger.exception(
+            "Transcription job failed",
+            extra={"job_id": job_id, "duration_seconds": round(time.time() - start_time, 2), "error": str(e)},
         )
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["error"] = str(e)
         _emit_progress(job_id, f"Transcription failed: {e}", "error")
+
+
+def label_transcript(transcript: str, turns: list[tuple[float, float, str]]) -> str:
+    """Attach ``SPEAKER_NN:`` labels to a timestamped transcript (core's midpoint matching)."""
+    from vtt_transcribe.diarization_common import SpeakerLabeler
+
+    return SpeakerLabeler().apply_speakers_to_transcript(transcript, turns)
+
+
+async def translate_job_segments(job: dict[str, Any], api_key: str | None, target_language: str) -> None:
+    """Translate a job's segments in place (``translation`` per segment) via core's AudioTranslator.
+
+    Speakers are not sent to the model: only ``[ts] text`` lines are translated and zipped back by index, so
+    names/ids can be renamed or merged before *or* after translating without redoing it.
+    """
+    segments = job.get("segments")
+    translator = AudioTranslator(api_key)
+    if not segments:  # unstructured result: translate it verbatim
+        job["result"] = await asyncio.to_thread(translator.translate_transcript, job["result"], target_language)
+        job["translated_to"] = target_language
+        return
+    plain = [{**s, "speaker": None} for s in segments]
+    translated = await asyncio.to_thread(
+        translator.translate_transcript, speakers.to_result(plain), target_language, preserve_timestamps=True
+    )
+    parsed = speakers.parse_transcript(translated)
+    if len(parsed) != len(segments):
+        msg = f"Translation returned {len(parsed)} lines for {len(segments)} segments"
+        raise RuntimeError(msg)
+    for seg, tr in zip(segments, parsed, strict=True):
+        seg["translation"] = tr["text"]
+    job["translated_to"] = target_language
+    set_segments(job, segments)  # result now reads in the target language
 
 
 def _parse_transcript_segments(transcript: str) -> list[dict[str, Any]]:
@@ -581,16 +688,26 @@ def _format_srt_time(seconds: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d},000"
 
 
+_MEDIA_TYPES = {
+    "txt": "text/plain",
+    "vtt": "text/vtt",
+    "srt": "application/x-subrip",
+    "json": "application/json",
+}
+
+
 @router.get("/jobs/{job_id}/download")
 async def download_transcript(
     job_id: str,
-    format: str = Query("txt", pattern="^(txt|vtt|srt)$"),  # noqa: A002
+    format: str = Query("txt", pattern="^(txt|vtt|srt|json)$"),  # noqa: A002
+    translated: bool = Query(False, description="Export the translation instead of the original text"),  # noqa: FBT001, FBT003
 ) -> PlainTextResponse:
-    """Download transcript in specified format.
+    """Download transcript in specified format, with speaker names applied as ``Name: text``.
 
     Args:
         job_id: Job ID
-        format: Output format (txt, vtt, or srt)
+        format: Output format (txt, vtt, srt or json)
+        translated: Use the translated text when the job has a translation
 
     Returns:
         Formatted transcript file
@@ -607,26 +724,28 @@ async def download_transcript(
     if not result:
         raise HTTPException(status_code=404, detail="No transcript available")
 
-    # Parse transcript into segments
-    segments = _parse_transcript_segments(result)
+    if job.get("segments"):
+        segments = speakers.labelled(job["segments"], job.get("speaker_names", {}), translated=translated)
+    else:
+        # Legacy / unstructured result: parse it
+        segments = _parse_transcript_segments(result)
 
     if not segments:
         raise HTTPException(status_code=404, detail="No segments found in transcript")
 
-    # Format based on requested type
-    if format == "txt":
+    if format == "json":
+        content = json.dumps({"segments": segments}, ensure_ascii=False, indent=2)
+    elif job.get("segments"):
+        content = {"txt": speakers.to_txt, "vtt": speakers.to_vtt, "srt": speakers.to_srt}[format](segments)
+    elif format == "txt":
         content = _format_as_txt(segments)
-        media_type = "text/plain"
     elif format == "vtt":
         content = _format_as_vtt(segments)
-        media_type = "text/vtt"
     else:  # srt
         content = _format_as_srt(segments)
-        media_type = "application/x-subrip"
 
-    filename = f"transcript.{format}"
     return PlainTextResponse(
         content=content,
-        media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        media_type=_MEDIA_TYPES[format],
+        headers={"Content-Disposition": f'attachment; filename="transcript.{format}"'},
     )
