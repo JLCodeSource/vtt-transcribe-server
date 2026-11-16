@@ -8,20 +8,23 @@ import shutil
 import tempfile
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
+from vtt_transcribe import speakers
 from vtt_transcribe.logging_config import get_logger
 from vtt_transcribe.transcriber import VideoTranscriber
 from vtt_transcribe.translator import AudioTranslator
 
-from vtt_server import speakers
 from vtt_server.engines import (
     EngineUnavailableError,
     build_diarizer,
     engine_info,
+    make_local_transcriber,
+    make_local_translate_fn,
     validate_engine,
 )
 
@@ -431,10 +434,7 @@ async def _process_transcription(
         _emit_progress(job_id, "Starting transcription", "info")
         audio_path = _save_audio(job_id, content, filename)  # small sync write, as before
 
-        # ``engine=local`` is a seam (see vtt_server/engines.py); validate_engine already rejected it at the API
-        # boundary, this keeps direct callers honest too.
-        validate_engine(engine, api_key)
-        transcriber = VideoTranscriber(api_key)
+        transcriber = make_transcriber(engine, api_key)  # openai or local (core's LocalTranscriber)
 
         # Detect language before transcription
         _emit_progress(job_id, "Detecting language", "language")
@@ -463,7 +463,7 @@ async def _process_transcription(
         # If translation requested, translate the transcript
         if translate_to:
             _emit_progress(job_id, f"Translating to {translate_to}", "translation")
-            await translate_job_segments(jobs[job_id], api_key, translate_to)
+            await translate_job_segments(jobs[job_id], api_key, translate_to, engine=engine)
             _emit_progress(job_id, f"Translation to {translate_to} complete", "translation")
 
         jobs[job_id]["status"] = "completed"
@@ -488,6 +488,21 @@ async def _process_transcription(
         _emit_progress(job_id, f"Transcription failed: {e}", "error")
 
 
+def make_transcriber(engine: str, api_key: str | None) -> Any:
+    """The engine object (``detect_language`` / ``transcribe``): OpenAI or core's local faster-whisper."""
+    validate_engine(engine, api_key)
+    return make_local_transcriber() if engine == "local" else VideoTranscriber(api_key)
+
+
+def make_translate_fn(engine: str, api_key: str | None, target: str, source: str | None) -> Callable[[str], str]:
+    """``transcript -> translated transcript`` (keeps ``[timestamp]`` lines) for the job's engine."""
+    validate_engine(engine, api_key)
+    if engine == "local":
+        return make_local_translate_fn(target, source)
+    translator = AudioTranslator(api_key)
+    return lambda text: translator.translate_transcript(text, target, preserve_timestamps=True)
+
+
 def label_transcript(transcript: str, turns: list[tuple[float, float, str]]) -> str:
     """Attach ``SPEAKER_NN:`` labels to a timestamped transcript (core's midpoint matching)."""
     from vtt_transcribe.diarization_common import SpeakerLabeler
@@ -495,30 +510,24 @@ def label_transcript(transcript: str, turns: list[tuple[float, float, str]]) -> 
     return SpeakerLabeler().apply_speakers_to_transcript(transcript, turns)
 
 
-async def translate_job_segments(job: dict[str, Any], api_key: str | None, target_language: str) -> None:
-    """Translate a job's segments in place (``translation`` per segment) via core's AudioTranslator.
+async def translate_job_segments(
+    job: dict[str, Any], api_key: str | None, target_language: str, *, engine: str | None = None
+) -> None:
+    """Translate a job's segments in place (``translation`` per segment) with the job's engine.
 
-    Speakers are not sent to the model: only ``[ts] text`` lines are translated and zipped back by index, so
-    names/ids can be renamed or merged before *or* after translating without redoing it.
+    Speakers are not sent to the model (core's ``translate_segments``), so names/ids can be renamed or merged
+    before *or* after translating without redoing it. ``engine=local`` translates on-box and needs no key.
     """
+    engine = engine or job.get("engine") or "openai"
+    translate = make_translate_fn(engine, api_key, target_language, job.get("detected_language"))
     segments = job.get("segments")
-    translator = AudioTranslator(api_key)
     if not segments:  # unstructured result: translate it verbatim
-        job["result"] = await asyncio.to_thread(translator.translate_transcript, job["result"], target_language)
+        job["result"] = await asyncio.to_thread(translate, job["result"])
         job["translated_to"] = target_language
         return
-    plain = [{**s, "speaker": None} for s in segments]
-    translated = await asyncio.to_thread(
-        translator.translate_transcript, speakers.to_result(plain), target_language, preserve_timestamps=True
-    )
-    parsed = speakers.parse_transcript(translated)
-    if len(parsed) != len(segments):
-        msg = f"Translation returned {len(parsed)} lines for {len(segments)} segments"
-        raise RuntimeError(msg)
-    for seg, tr in zip(segments, parsed, strict=True):
-        seg["translation"] = tr["text"]
+    translated = await asyncio.to_thread(speakers.translate_segments, segments, translate)
     job["translated_to"] = target_language
-    set_segments(job, segments)  # result now reads in the target language
+    set_segments(job, translated)  # result now reads in the target language
 
 
 def _parse_transcript_segments(transcript: str) -> list[dict[str, Any]]:

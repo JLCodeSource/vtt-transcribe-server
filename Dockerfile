@@ -6,6 +6,8 @@
 # Targets:
 #   api     FastAPI server only (the frontend ships separately as its own nginx image, see frontend/Dockerfile)
 #   api-ui  same server with the built frontend bundled in and served at / (single container)
+# Build arg SYNC_ARGS adds extras to `uv sync`; the default (empty) is the lean OpenAI-only image. For the key-free local
+# engine (faster-whisper + local translation; bigger image):  --build-arg SYNC_ARGS="--extra local"
 # Diarization is sherpa-onnx (CPU, ~46 MB models fetched on first use, no torch, no token).
 
 # Build stage: resolve and install dependencies into /opt/venv
@@ -20,11 +22,13 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 
 # Dependency layer (cached until pyproject.toml / uv.lock change)
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --no-install-project
+ARG SYNC_ARGS=""
+
+RUN uv sync --frozen --no-dev --no-install-project ${SYNC_ARGS}
 
 # Project source
 COPY vtt_server ./vtt_server
-RUN uv sync --frozen --no-dev --no-editable
+RUN uv sync --frozen --no-dev --no-editable ${SYNC_ARGS}
 
 # Runtime stage: minimal image with only runtime dependencies
 FROM python:3.12-slim AS base

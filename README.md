@@ -22,8 +22,9 @@ The server package is named **`vtt_server`** (it used to be `vtt_transcribe.api`
 
 ## How the core is consumed
 
-`vtt-transcribe[sherpa]>=0.5.0` from PyPI (transcription, translation, and the key-free sherpa-onnx diarizer: CPU,
-no torch, no token). There are no optional extras; pyannote/torch was dropped to keep the install and image small.
+`vtt-transcribe[sherpa]>=0.6.0` from PyPI (transcription, translation, shared speaker logic, and the key-free sherpa-onnx
+diarizer: CPU, no torch, no token). Optional extra `local` adds key-free on-box Whisper and translation
+(`uv sync --extra local`). pyannote/torch was dropped to keep the install and image small.
 See [docs/DESIGN.md](docs/DESIGN.md) for the target API, job model and deployment plan.
 
 ## Run locally
@@ -45,7 +46,7 @@ docker compose up -d --build
 docker compose --profile frontend up -d --build
 ```
 
-The `Dockerfile` has two targets (~530 MB each; ffmpeg is the static binary from the venv, not the apt package):
+The `Dockerfile` has two targets (~530 MB each, or ~930 MB with `--build-arg SYNC_ARGS="--extra local"`; ffmpeg is the static binary from the venv, not the apt package):
 
 ```bash
 docker build --target api    -t vtt-server .      # API only; the frontend ships as its own nginx image (frontend/Dockerfile)

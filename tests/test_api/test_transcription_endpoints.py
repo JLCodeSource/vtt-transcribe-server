@@ -200,7 +200,7 @@ class TestAPITranscriptionCoverage:
         response = client.post(
             "/api/diarize",
             files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
-                    )
+        )
 
         assert response.status_code == 200
         job_id = response.json()["job_id"]  # noqa: F841
@@ -245,7 +245,7 @@ class TestAPITranscriptionCoverage:
         response = client.post(
             "/api/diarize",
             files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
-                    )
+        )
 
         job_id = response.json()["job_id"]
 
@@ -832,7 +832,7 @@ class TestProgressEventsInTranscription:
         response = client.post(
             "/api/diarize",
             files={"file": ("test.mp3", b"fake audio", "audio/mpeg")},
-                    )
+        )
         job_id = response.json()["job_id"]
 
         # Verify job has progress_updates queue

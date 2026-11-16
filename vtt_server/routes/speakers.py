@@ -1,7 +1,7 @@
 """Speaker review endpoints: list speakers (with sample clips), rename, merge, split, re-diarize, translate.
 
 All of these operate on an existing completed job's structured ``segments`` / ``speaker_names``
-(see ``vtt_server/speakers.py``). Renames and merges are applied to the job ``result`` and every export
+(``vtt_transcribe.speakers``). Renames and merges are applied to the job ``result`` and every export
 (``GET /api/jobs/{id}/download``) as ``Name: text``.
 """
 
@@ -13,8 +13,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from vtt_transcribe import speakers
 
-from vtt_server import speakers
+from vtt_server.engines import EngineUnavailableError
 from vtt_server.routes import transcription as tx
 
 router = APIRouter(prefix="/api/jobs/{job_id}", tags=["speakers"])
@@ -54,10 +55,11 @@ class RediarizeBody(BaseModel):
 
 
 class TranslateBody(BaseModel):
-    """Translate the job's segments to ``target_language`` (needs the caller's OpenAI key)."""
+    """Translate the job's segments to ``target_language`` (OpenAI key needed unless the job's engine is local)."""
 
     target_language: str = Field(min_length=1, max_length=64)
-    api_key: str = Field(min_length=1)
+    api_key: str | None = None
+    engine: str | None = Field(None, description="Defaults to the job's own engine (openai for diarize-only jobs)")
 
 
 def _job(job_id: str) -> dict[str, Any]:
@@ -217,7 +219,13 @@ async def translate_job(job_id: str, body: TranslateBody) -> dict[str, Any]:
     """Translate the job into ``target_language``; speaker names are untouched and exports gain ``?translated=true``."""
     job = _job(job_id)
     try:
-        await tx.translate_job_segments(job, body.api_key, body.target_language)
+        await tx.translate_job_segments(job, body.api_key, body.target_language, engine=body.engine)
+    except EngineUnavailableError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except ValueError as exc:
+        if isinstance(exc, speakers.SpeakerError):  # translation changed the line count
+            raise HTTPException(status_code=502, detail=f"Translation failed: {exc!s}") from exc
+        raise HTTPException(status_code=422 if "api_key" in str(exc) else 400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Translation failed: {exc!s}") from exc
     return _view(job)

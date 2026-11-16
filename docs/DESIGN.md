@@ -5,14 +5,16 @@ Docker image. The browser-only app [vtt-transcribe-web](https://github.com/JLCod
 functional reference for the UI; the server exists for what a browser cannot do well (long files, server-side models,
 accounts, history).
 
-Status legend: **[done]** in this repo now, **[seam]** stubbed behind a marked interface, **[todo]** not built.
+Status legend: **[done]** in this repo now, **[todo]** not built.
 
 ## 1. Core dependency
 
-`vtt-transcribe[sherpa]>=0.5.0` from PyPI (sherpa-onnx, CPU, ~46 MB models, no token, no torch). There are no optional
-extras: pyannote/torch (the core's `diarization` extra) was dropped deliberately to keep one diarizer, no HF token and a
-small image. The server never re-implements transcription, translation or diarization; it orchestrates core classes
-(`VideoTranscriber`, `AudioTranslator`, `SherpaDiarizer`) and owns jobs, speaker review and exports.
+`vtt-transcribe[sherpa]>=0.6.0` from PyPI (sherpa-onnx, CPU, ~46 MB models, no token, no torch). One optional extra,
+`local` (`vtt-transcribe[local]`: faster-whisper + sentencepiece, still no torch). pyannote/torch (core's `diarization`
+extra) was dropped deliberately to keep one diarizer, no HF token and a small image. The server never re-implements
+transcription, translation, diarization or speaker logic; it orchestrates core classes (`VideoTranscriber`,
+`LocalTranscriber`, `AudioTranslator`, `LocalTextTranslator`, `SherpaDiarizer`, and `vtt_transcribe.speakers` for
+rename/merge/split/export/translate_segments) and owns only jobs, storage, the HTTP API and the sample-clip endpoint.
 
 ## 2. Job model
 
@@ -62,7 +64,7 @@ Existing `/detect-language` and `/translate` (raw text) stay as they were. `user
 
 Decisions worth knowing:
 
-- **Split is line-based, not embedding-based.** The web app re-clusters voice embeddings in the browser; core 0.5.0 does not
+- **Split is line-based, not embedding-based.** The web app re-clusters voice embeddings in the browser; core does not
   expose embeddings, so the server lets the reviewer pick the lines that belong to someone else, and offers `rediarize`
   with a corrected `num_speakers` for the automatic route. If core later exposes embeddings (or a `split` helper) the
   endpoint can grow an `auto: true` mode without changing its shape.
@@ -77,13 +79,13 @@ Decisions worth knowing:
 The pipeline asks `vtt_server/engines.py` for the engine; everything else is engine-agnostic.
 
 - `openai`: core `VideoTranscriber` with the caller's key **[done]**.
-- `local` (key-free Whisper, core's upcoming `--engine local`): **[seam]**. `engines.LOCAL_ENGINE_AVAILABLE = False`,
-  `engines._local_engine()` raises, `POST /transcribe` answers `501 "not available yet"`, `GET /engines` reports
-  `available: false` so the UI greys it out ("coming soon"). To switch on: bump `vtt-transcribe` to the release that ships
-  it, implement `_local_engine()` (construct core's engine; it must provide `detect_language(path)` and
-  `transcribe(path, language=)`), flip the flag, route `_process_transcription` through the engine object instead of
-  constructing `VideoTranscriber` directly, and make the image extra (`local`?) small enough. Translation still needs an
-  OpenAI key (or a local model, **[todo]** if core adds one).
+- `local` (key-free): core's `LocalTranscriber` (faster-whisper, model `VTT_LOCAL_MODEL`, default `small`, cached under
+  `VTT_MODEL_DIR/whisper`) and `LocalTextTranslator` (M2M100 418M) **[done]**. It needs the `local` extra
+  (`uv sync --extra local`, or `docker build --build-arg SYNC_ARGS="--extra local"`, ~930 MB vs ~530 MB lean). Availability is
+  detected at runtime (`engines.local_engine_available()`): in the lean image `POST /transcribe` answers 501 and
+  `GET /engines` reports `available: false`, so the UI disables the option (" — not installed"). A job remembers its engine;
+  `POST /jobs/{id}/translate` uses it (local = no key) unless the body overrides `engine`. Translation with `engine=openai`
+  still needs the caller's key.
 
 ## 5. Frontend alignment with vtt-transcribe-web
 
@@ -95,7 +97,7 @@ progress -> transcript -> **speaker review** -> exports. Components (`frontend/s
 | `EnginePicker` (engine, diarize, speaker count) | `FileUpload` options, engines from `GET /engines` | **[done]** |
 | `SpeakerReview` (name, play samples, merge, split) | `SpeakerReview.svelte` (same affordances; samples are server clips; split = pick lines) | **[done]** |
 | `TranscriptViewer` (translated toggle, `Name: text` exports) | `TranscriptViewer.svelte` + Translate box, JSON export | **[done]** |
-| `lib/speakers.ts` logic in-browser | server `speakers.py` (same operations, same defaults) | **[done]** |
+| `lib/speakers.ts` logic in-browser | core `vtt_transcribe.speakers` (same operations, same defaults), used by the server | **[done]** |
 | Review step before translation | translation runs after (or at) upload; review can happen before or after because names are not sent to the model | differs deliberately |
 
 Parity is kept by (a) mirroring the operation set (name/merge/split/rediarize-by-count, `Name: text`, `Speaker N`),
@@ -127,8 +129,8 @@ Postgres via compose when needed; `SECRET_KEY`, `ENCRYPTION_KEY`, `SESSION_SECRE
 ## 7. What remains
 
 1. Job persistence + per-user auth on the job routes; TTL cleanup of stored audio.
-2. `engine=local` once core releases it (section 4 checklist).
+2. Pick the local Whisper model per request (today one `VTT_LOCAL_MODEL` per deployment); size the host for it.
 3. Prod deploy config + enabling CI/CD (section 6) once the full solution is ready.
-4. Optional: embedding-based auto-split if core exposes embeddings; local translation if core adds it.
+4. Optional: embedding-based auto-split if core exposes embeddings.
 5. Frontend e2e (Playwright) coverage for the review flow against a live backend.
 6. If pyannote quality is ever needed again: re-add it as a separate image variant (core's `diarization` extra), not a default.

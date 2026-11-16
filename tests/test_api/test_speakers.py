@@ -1,4 +1,4 @@
-"""Tests for speaker review: pure logic, endpoints, and the diarize/translate/engine pipeline."""
+"""Tests for speaker review endpoints and the diarize/translate/engine pipeline (pure speaker logic: core)."""
 
 import asyncio
 import io
@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from vtt_transcribe import speakers
 
-from vtt_server import speakers
 from vtt_server.routes.transcription import _process_transcription, jobs
 
 TRANSCRIPT = (
@@ -38,63 +38,6 @@ def job():
     set_segments(jobs[job_id], segs)
     yield job_id
     jobs.pop(job_id, None)
-
-
-class TestSpeakerLogic:
-    def test_parse_with_and_without_speaker(self):
-        segs = speakers.parse_transcript("[00:01 - 00:03] hi\n[01:00:00 - 01:00:02] SPEAKER_03: yo\nnoise")
-        assert segs[0] == {"start": 1, "end": 3, "text": "hi", "speaker": None}
-        assert segs[1]["start"] == 3600
-        assert segs[1]["speaker"] == "SPEAKER_03"
-
-    def test_default_and_display_names(self):
-        assert speakers.default_name("SPEAKER_00") == "Speaker 1"
-        assert speakers.display_name("SPEAKER_01", {"SPEAKER_01": "  Bob "}) == "Bob"
-        assert speakers.display_name(None, {}) is None
-
-    def test_summarize_orders_by_appearance_and_caps_samples(self):
-        info = speakers.summarize(speakers.parse_transcript(TRANSCRIPT), {})
-        assert [s["id"] for s in info] == ["SPEAKER_00", "SPEAKER_01", "SPEAKER_02"]
-        assert info[1]["seconds"] == 7
-        assert info[1]["samples"] == [{"start": 5, "end": 12}]
-        assert info[0]["sample_text"] == "Hello there"
-
-    def test_merge_split_rename_roundtrip(self):
-        segs = speakers.parse_transcript(TRANSCRIPT)
-        merged, names = speakers.merge(segs, {"SPEAKER_02": "X", "SPEAKER_00": "Al"}, ["SPEAKER_02"], "SPEAKER_00")
-        assert speakers.speaker_ids(merged) == ["SPEAKER_00", "SPEAKER_01"]
-        assert names == {"SPEAKER_00": "Al"}
-        split, new_id = speakers.split(merged, "SPEAKER_00", [3])
-        assert new_id == "SPEAKER_02"
-        assert split[3]["speaker"] == "SPEAKER_02"
-        assert split[0]["speaker"] == "SPEAKER_00"
-
-    @pytest.mark.parametrize(
-        "call",
-        [
-            lambda s: speakers.merge(s, {}, ["SPEAKER_00"], "SPEAKER_00"),
-            lambda s: speakers.merge(s, {}, ["NOPE"], "SPEAKER_00"),
-            lambda s: speakers.split(s, "SPEAKER_01", [0]),  # segment 0 is not SPEAKER_01
-            lambda s: speakers.split(s, "SPEAKER_01", [1]),  # would take every segment of the speaker
-            lambda s: speakers.split(s, "SPEAKER_00", []),
-            lambda s: speakers.rename(s, {}, "NOPE", "x"),
-        ],
-    )
-    def test_invalid_operations_raise(self, call):
-        with pytest.raises(speakers.SpeakerError):
-            call(speakers.parse_transcript(TRANSCRIPT))
-
-    def test_blank_name_clears(self):
-        segs = speakers.parse_transcript(TRANSCRIPT)
-        assert speakers.rename(segs, {"SPEAKER_00": "A"}, "SPEAKER_00", " ") == {}
-
-    def test_exports_use_name_colon_text(self):
-        segs = speakers.labelled(speakers.parse_transcript(TRANSCRIPT), {"SPEAKER_00": "Alice"})
-        assert speakers.to_txt(segs).splitlines()[0] == "Alice: Hello there"
-        assert "Alice: Hello there" in speakers.to_srt(segs)
-        assert "00:00:05,000 --> 00:00:12,000" in speakers.to_srt(segs)
-        assert "<v Alice>Hello there" in speakers.to_vtt(segs)
-        assert speakers.to_result(segs).splitlines()[1] == "[00:00:05 - 00:00:12] Speaker 2: Hi, how are you"
 
 
 class TestSpeakerEndpoints:
@@ -266,13 +209,58 @@ class TestEngineSeam:
         data = client.get("/api/engines").json()
         ids = {e["id"]: e for e in data["engines"]}
         assert ids["openai"]["available"] is True
-        assert ids["local"]["available"] is False
+        assert ids["local"]["available"] is False  # the test env does not install the 'local' extra
         assert "diarizers" not in data
 
-    def test_local_engine_is_a_501_until_core_ships_it(self, client):
-        r = client.post("/api/transcribe", files={"file": ("t.mp3", io.BytesIO(b"x"), "audio/mpeg")}, data={"engine": "local"})
+    def test_engines_listing_reports_local_when_installed(self, client):
+        with patch("vtt_server.engines.local_engine_available", return_value=True):
+            ids = {e["id"]: e for e in client.get("/api/engines").json()["engines"]}
+        assert ids["local"]["available"] is True
+        assert ids["local"]["requires_api_key"] is False
+
+    def test_local_engine_is_a_501_when_extra_not_installed(self, client):
+        with patch("vtt_server.engines.local_engine_available", return_value=False):
+            r = client.post(
+                "/api/transcribe", files={"file": ("t.mp3", io.BytesIO(b"x"), "audio/mpeg")}, data={"engine": "local"}
+            )
         assert r.status_code == 501
-        assert "not available yet" in r.json()["detail"]
+        assert "local" in r.json()["detail"]
+
+    def test_local_engine_runs_without_a_key(self, client):
+        with (
+            patch("vtt_server.engines.local_engine_available", return_value=True),
+            patch("vtt_server.routes.transcription.make_local_transcriber") as lt,
+        ):
+            lt.return_value.detect_language.return_value = "en"
+            lt.return_value.transcribe.return_value = "[00:00:00 - 00:00:04] hello"
+            r = client.post(
+                "/api/transcribe", files={"file": ("t.mp3", io.BytesIO(b"x"), "audio/mpeg")}, data={"engine": "local"}
+            )
+            assert r.status_code == 200
+            job_id = r.json()["job_id"]
+            for _ in range(100):
+                got = client.get(f"/api/jobs/{job_id}/segments")
+                if got.status_code != 409:
+                    break
+                time.sleep(0.05)
+        assert got.status_code == 200
+        assert got.json()["segments"][0]["text"] == "hello"
+        client.delete(f"/api/jobs/{job_id}")
+
+    def test_local_translation_needs_no_key(self, client, job):
+        jobs[job]["engine"] = "local"
+        fake = "\n".join(f"[00:00:{a:02d} - 00:00:{b:02d}] t{a}" for a, b in [(0, 5), (5, 12), (12, 14), (14, 20)])
+        with (
+            patch("vtt_server.engines.local_engine_available", return_value=True),
+            patch("vtt_transcribe.local_translate.LocalTextTranslator") as lt,
+        ):
+            lt.return_value.translate_text.return_value = fake
+            r = client.post(f"/api/jobs/{job}/translate", json={"target_language": "French"})
+        assert r.status_code == 200
+        assert r.json()["translated_to"] == "French"
+
+    def test_openai_translation_without_key_is_422(self, client, job):
+        assert client.post(f"/api/jobs/{job}/translate", json={"target_language": "French"}).status_code == 422
 
     def test_unknown_engine_and_speaker_count(self, client):
         f = {"file": ("t.mp3", io.BytesIO(b"x"), "audio/mpeg")}
