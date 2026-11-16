@@ -5,9 +5,35 @@
     segments: TranscriptSegment[];
     jobId: string;
     onreset: () => void;
+    /** opens the speaker review (shown only when the job has speakers) */
+    onreview?: () => void;
+    /** translate the transcript into the given language name; resolves when segments are refreshed */
+    ontranslate?: (language: string) => Promise<void>;
+    translatedTo?: string | null;
   }
 
-  const { segments, jobId, onreset }: Props = $props();
+  const { segments, jobId, onreset, onreview, ontranslate, translatedTo = null }: Props = $props();
+
+  let showTranslation = $state(true);
+  let targetLanguage = $state('');
+  let translating = $state(false);
+  let translateError = $state('');
+  const hasTranslation = $derived(segments.some((seg) => seg.translation));
+  const textOf = (seg: TranscriptSegment) => (hasTranslation && showTranslation && seg.translation) || seg.text;
+
+  async function translate() {
+    if (!ontranslate || !targetLanguage.trim()) return;
+    translating = true;
+    translateError = '';
+    try {
+      await ontranslate(targetLanguage.trim());
+      showTranslation = true;
+    } catch (error) {
+      translateError = error instanceof Error ? error.message : 'Translation failed';
+    } finally {
+      translating = false;
+    }
+  }
 
   let searchQuery = $state('');
   let selectedSpeaker = $state('all');
@@ -41,9 +67,9 @@
     return `${formatTime(start)} - ${formatTime(end)}`;
   }
 
-  async function downloadTranscript(format: 'txt' | 'vtt' | 'srt') {
+  async function downloadTranscript(format: 'txt' | 'vtt' | 'srt' | 'json') {
     try {
-      const response = await fetch(`/api/jobs/${jobId}/download?format=${format}`);
+      const response = await fetch(`/api/jobs/${jobId}/download?format=${format}${hasTranslation && showTranslation ? '&translated=true' : ''}`);
       if (!response.ok) {
         throw new Error(`Download failed: ${response.statusText}`);
       }
@@ -76,9 +102,37 @@
       <button type="button" class="secondary" onclick={() => downloadTranscript('srt')}>
         Download SRT
       </button>
+      <button type="button" class="secondary" onclick={() => downloadTranscript('json')}>
+        Download JSON
+      </button>
+      {#if onreview && speakers.length > 0}
+        <button type="button" class="secondary" onclick={onreview}>Review speakers</button>
+      {/if}
       <button type="button" class="secondary" onclick={onreset}>New Transcription</button>
     </div>
   </div>
+
+  {#if ontranslate}
+    <div class="controls translate">
+      <input
+        type="text"
+        placeholder="Translate to… (e.g. Spanish)"
+        aria-label="Translate to language"
+        bind:value={targetLanguage}
+        class="search-input"
+      />
+      <button type="button" class="secondary" onclick={translate} disabled={translating || !targetLanguage.trim()}>
+        {translating ? 'Translating…' : 'Translate'}
+      </button>
+      {#if hasTranslation}
+        <label class="show-translation">
+          <input type="checkbox" bind:checked={showTranslation} />
+          Show {translatedTo ?? 'translation'}
+        </label>
+      {/if}
+    </div>
+    {#if translateError}<p class="error-message" role="alert">{translateError}</p>{/if}
+  {/if}
 
   <div class="controls">
     <input
@@ -111,7 +165,7 @@
             <span class="speaker-badge">{segment.speaker}</span>
           {/if}
         </div>
-        <p class="segment-text">{segment.text}</p>
+        <p class="segment-text">{textOf(segment)}</p>
       </div>
     {/each}
   </div>

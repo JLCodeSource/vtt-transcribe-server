@@ -1,5 +1,7 @@
 <script lang="ts">
-  import type { UploadOptions, TranscriptionJob } from '../types';
+  import { onMount } from 'svelte';
+  import { fetchEngines } from '../api';
+  import type { UploadOptions, TranscriptionJob, EnginesResponse } from '../types';
 
   interface Props {
     onuploadstart: (event: CustomEvent<TranscriptionJob>) => void;
@@ -11,11 +13,27 @@
   let selectedFile: File | null = $state(null);
   const options: UploadOptions = $state({
     diarization: true,
+    engine: 'openai',
+    numSpeakers: 'auto',
+    translateTo: '',
     language: 'auto',
     model: 'whisper-1',
     apiKey: '',
   });
+  let engines: EnginesResponse['engines'] = $state([
+    { id: 'openai', label: 'OpenAI Whisper (API)', requires_api_key: true, available: true },
+    { id: 'local', label: 'Local Whisper (no key)', requires_api_key: false, available: false },
+  ]);
+  const needsKey = $derived(engines.find((e) => e.id === options.engine)?.requires_api_key ?? true);
   let isUploading = $state(false);
+
+  onMount(() => {
+    fetchEngines()
+      .then((r) => (engines = r.engines))
+      .catch(() => {
+        /* keep the defaults: the server is the source of truth only when reachable */
+      });
+  });
   let validationError = $state('');
 
   // Load API key from sessionStorage on mount
@@ -94,7 +112,7 @@
     if (!selectedFile) return;
 
     // Validate required fields
-    if (!options.apiKey) {
+    if (needsKey && !options.apiKey) {
       alert('OpenAI API key is required');
       return;
     }
@@ -104,8 +122,19 @@
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
-      formData.append('api_key', options.apiKey);
+      formData.append('engine', options.engine ?? 'openai');
+      if (options.apiKey) {
+        formData.append('api_key', options.apiKey);
+        // kept for this tab only, so Translate / re-run can reuse it; never persisted
+        sessionStorage.setItem('openai_api_key', options.apiKey);
+      }
       formData.append('diarize', String(options.diarization));
+      if (options.diarization && options.numSpeakers && options.numSpeakers !== 'auto') {
+        formData.append('num_speakers', options.numSpeakers);
+      }
+      if (options.translateTo?.trim()) {
+        formData.append('translate_to', options.translateTo.trim());
+      }
       
       if (options.language && options.language !== 'auto') {
         formData.append('language', options.language);
@@ -203,21 +232,54 @@
       <h3>Transcription Options</h3>
 
       <label class="input-label">
-        <span>OpenAI API Key <span class="required">*</span></span>
-        <input
-          type="password"
-          bind:value={options.apiKey}
-          placeholder="sk-..."
-          disabled={isUploading}
-          required
-        />
-        <span class="hint-text">Required for transcription</span>
+        <span>Engine</span>
+        <select bind:value={options.engine} disabled={isUploading} aria-label="Engine">
+          {#each engines as e (e.id)}
+            <option value={e.id} disabled={!e.available}>{e.label}{e.available ? '' : ' — coming soon'}</option>
+          {/each}
+        </select>
       </label>
+
+      {#if needsKey}
+        <label class="input-label">
+          <span>OpenAI API Key <span class="required">*</span></span>
+          <input
+            type="password"
+            bind:value={options.apiKey}
+            placeholder="sk-..."
+            disabled={isUploading}
+            required
+          />
+          <span class="hint-text">Required for transcription with the OpenAI engine</span>
+        </label>
+      {/if}
 
       <label class="checkbox-label">
         <input type="checkbox" bind:checked={options.diarization} disabled={isUploading} />
         <span>Enable Speaker Diarization</span>
-        <span class="hint-text">Identify different speakers in the audio (requires HF_TOKEN env var)</span>
+        <span class="hint-text">Identify different speakers (runs on the server, no token needed)</span>
+      </label>
+
+      {#if options.diarization}
+        <label class="input-label">
+          <span>Number of speakers</span>
+          <select bind:value={options.numSpeakers} disabled={isUploading} aria-label="Number of speakers">
+            <option value="auto">Auto-detect</option>
+            {#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}<option value={String(n)}>{n}</option>{/each}
+          </select>
+        </label>
+      {/if}
+
+      <label class="input-label">
+        <span>Translate to (optional)</span>
+        <input
+          type="text"
+          bind:value={options.translateTo}
+          placeholder="e.g. Spanish"
+          disabled={isUploading}
+          aria-label="Translate to"
+        />
+        <span class="hint-text">Needs an OpenAI API key</span>
       </label>
 
       <label class="input-label">

@@ -5,9 +5,11 @@
   import Settings from './components/Settings.svelte';
   import FileUpload from './components/FileUpload.svelte';
   import TranscriptViewer from './components/TranscriptViewer.svelte';
+  import SpeakerReview from './components/SpeakerReview.svelte';
+  import { fetchSegments, translateJob } from './api';
   import ProgressView from './components/ProgressView.svelte';
   import Login from './components/Login.svelte';
-  import type { TranscriptionJob, TranscriptSegment } from './types';
+  import type { SegmentsResponse, TranscriptionJob, TranscriptSegment } from './types';
 
   // Auth state
   let isAuthenticated = $state(false);
@@ -23,6 +25,8 @@
   // Job state
   let currentJob: TranscriptionJob | null = $state(null);
   let transcript: TranscriptSegment[] = $state([]);
+  let segmentsData: SegmentsResponse | null = $state(null);
+  let reviewing = $state(false);
 
   // User-friendly error messages for OAuth errors
   const oauthErrorMessages: Record<string, string> = {
@@ -228,11 +232,35 @@
     }
   }
 
-  function handleComplete(event: CustomEvent<TranscriptSegment[]>) {
+  function applySegments(data: SegmentsResponse) {
+    segmentsData = data;
+    transcript = data.segments.map((s) => ({
+      start: s.start,
+      end: s.end,
+      text: s.text,
+      speaker: s.speaker ?? undefined,
+      translation: s.translation ?? undefined,
+    }));
+  }
+
+  async function handleComplete(event: CustomEvent<TranscriptSegment[]>) {
     transcript = event.detail;
     if (currentJob) {
       currentJob = { ...currentJob, status: 'completed' };
+      // Structured segments (speaker names, translation) come from the server; the websocket text is the fallback.
+      try {
+        applySegments(await fetchSegments(currentJob.job_id));
+      } catch {
+        segmentsData = null;
+      }
     }
+  }
+
+  async function handleTranslate(language: string) {
+    if (!currentJob) return;
+    const apiKey = sessionStorage.getItem('openai_api_key') ?? '';
+    if (!apiKey) throw new Error('Enter your OpenAI API key (Settings) to translate.');
+    applySegments(await translateJob(currentJob.job_id, language, apiKey));
   }
 
   function handleError(event: CustomEvent<string>) {
@@ -245,6 +273,8 @@
   function handleReset() {
     currentJob = null;
     transcript = [];
+    segmentsData = null;
+    reviewing = false;
   }
 
   function openSettings() {
@@ -297,11 +327,21 @@
                 onerror={handleError}
               />
 
-              {#if transcript.length > 0}
+              {#if reviewing && segmentsData}
+                <SpeakerReview
+                  jobId={currentJob.job_id}
+                  data={segmentsData}
+                  onupdate={applySegments}
+                  onclose={() => (reviewing = false)}
+                />
+              {:else if transcript.length > 0}
                 <TranscriptViewer
                   segments={transcript}
                   jobId={currentJob.job_id}
                   onreset={handleReset}
+                  onreview={segmentsData ? () => (reviewing = true) : undefined}
+                  ontranslate={segmentsData ? handleTranslate : undefined}
+                  translatedTo={segmentsData?.translated_to ?? null}
                 />
               {/if}
             </div>
