@@ -363,7 +363,7 @@
         <div class="content-card">
           <p>
             VTT Transcribe is an AI-powered video transcription tool that uses OpenAI's Whisper
-            model for accurate speech-to-text conversion and pyannote.audio for speaker diarization.
+            model for accurate speech-to-text conversion and sherpa-onnx for speaker diarization.
           </p>
           <h3>Features:</h3>
           <ul>
@@ -378,7 +378,7 @@
     </main>
 
     <footer class="app-footer">
-      <p>Powered by OpenAI Whisper & pyannote.audio</p>
+      <p>Powered by OpenAI Whisper & sherpa-onnx</p>
     </footer>
   </div>
 

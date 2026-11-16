@@ -4,6 +4,7 @@ import contextlib
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
@@ -95,7 +96,13 @@ app.include_router(speakers.router)
 app.include_router(websockets.router)
 
 
-@app.get("/")
+# Optional single-container mode: serve the built frontend (target ``api-ui`` in the Dockerfile sets
+# VTT_STATIC_DIR). Without it the API runs alone and the frontend ships as its own nginx image.
+_static_dir = os.getenv("VTT_STATIC_DIR")
+_serve_ui = bool(_static_dir) and Path(_static_dir).is_dir()
+
+
+@app.get("/" if not _serve_ui else "/api-info")
 async def root() -> dict[str, Any]:
     """Root endpoint with welcome message."""
     return {
@@ -104,3 +111,10 @@ async def root() -> dict[str, Any]:
         "docs": "/docs",
         "websocket": "/ws/jobs/{job_id}",
     }
+
+
+if _serve_ui:
+    from fastapi.staticfiles import StaticFiles
+
+    # Registered last so every API / websocket route above takes precedence.
+    app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="ui")

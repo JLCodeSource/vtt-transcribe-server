@@ -15,7 +15,6 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from vtt_server import speakers
-from vtt_server.engines import DIARIZERS, EngineUnavailableError
 from vtt_server.routes import transcription as tx
 
 router = APIRouter(prefix="/api/jobs/{job_id}", tags=["speakers"])
@@ -52,9 +51,6 @@ class RediarizeBody(BaseModel):
     """Re-run diarization on the stored audio with a different speaker count (resets renames/merges)."""
 
     num_speakers: int | None = Field(None, ge=1)
-    diarizer: str = "sherpa"
-    hf_token: str | None = None
-    device: str | None = None
 
 
 class TranslateBody(BaseModel):
@@ -208,24 +204,11 @@ async def rediarize(job_id: str, body: RediarizeBody) -> dict[str, Any]:
     raw = job.get("raw_transcript")
     if raw is None:
         raise HTTPException(status_code=409, detail="Only transcription jobs can be re-diarized")
-    if body.diarizer not in DIARIZERS:
-        raise HTTPException(status_code=400, detail=f"Unknown diarizer: {body.diarizer}")
     tx.validate_num_speakers(body.num_speakers)
-    hf_token = tx.check_diarizer(body.diarizer, body.hf_token)
     audio = await asyncio.to_thread(_stored_audio, job)
-    try:
-        turns = await asyncio.to_thread(
-            tx.run_diarizer,
-            Path(audio),
-            body.diarizer,
-            hf_token,
-            body.device,
-            body.num_speakers,
-        )
-    except EngineUnavailableError as exc:
-        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    turns = await asyncio.to_thread(tx.run_diarizer, Path(audio), body.num_speakers)
     segments = speakers.parse_transcript(tx.label_transcript(raw, turns))
-    job.update(diarizer=body.diarizer, num_speakers=body.num_speakers, translated_to=None)
+    job.update(num_speakers=body.num_speakers, translated_to=None)
     return _apply(job, segments, {})
 
 

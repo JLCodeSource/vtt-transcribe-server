@@ -19,7 +19,6 @@ from vtt_transcribe.translator import AudioTranslator
 
 from vtt_server import speakers
 from vtt_server.engines import (
-    DIARIZERS,
     EngineUnavailableError,
     build_diarizer,
     engine_info,
@@ -31,18 +30,6 @@ logger = get_logger(__name__)
 
 # Jobs dictionary now includes progress_updates queue for each job
 jobs: dict[str, dict[str, Any]] = {}
-
-
-def _get_hf_token(provided_token: str | None) -> str | None:
-    """Get HuggingFace token from parameter or environment.
-
-    Args:
-        provided_token: Token provided as parameter (may be None)
-
-    Returns:
-        Token from parameter if provided, otherwise from HF_TOKEN environment variable
-    """
-    return provided_token or os.environ.get("HF_TOKEN")
 
 
 def _emit_progress(job_id: str, message: str, progress_type: str = "info") -> None:
@@ -122,24 +109,6 @@ def _check_engine(engine: str, api_key: str | None) -> None:
         raise HTTPException(status_code=422 if "api_key" in str(exc) else 400, detail=str(exc)) from exc
 
 
-def check_diarizer(diarizer: str, hf_token: str | None) -> str | None:
-    """Validate the diarizer choice; returns the HF token to use (pyannote only, else None)."""
-    if diarizer not in DIARIZERS:
-        raise HTTPException(status_code=400, detail=f"Unknown diarizer: {diarizer}. Choose one of: {', '.join(DIARIZERS)}")
-    if diarizer != "pyannote":
-        return None
-    hf_token = _get_hf_token(hf_token)
-    if not hf_token:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "HuggingFace token required for the pyannote diarizer. "
-                "Provide hf_token or set HF_TOKEN, or use diarizer=sherpa (no token needed)."
-            ),
-        )
-    return hf_token
-
-
 def validate_num_speakers(num_speakers: int | None) -> None:
     if num_speakers is not None and not 1 <= num_speakers <= MAX_SPEAKERS:
         raise HTTPException(status_code=422, detail=f"num_speakers must be between 1 and {MAX_SPEAKERS}")
@@ -147,8 +116,8 @@ def validate_num_speakers(num_speakers: int | None) -> None:
 
 @router.get("/engines")
 async def list_engines() -> dict[str, Any]:
-    """Selectable transcription engines and diarizers (drives the frontend's engine picker)."""
-    return {"engines": engine_info(), "diarizers": list(DIARIZERS), "max_speakers": MAX_SPEAKERS}
+    """Selectable transcription engines (drives the frontend's engine picker)."""
+    return {"engines": engine_info(), "max_speakers": MAX_SPEAKERS}
 
 
 @router.post("/transcribe")
@@ -156,11 +125,8 @@ async def create_transcription_job(
     file: UploadFile = File(...),
     api_key: str | None = Form(None),
     diarize: bool = Form(False),  # noqa: FBT001, FBT003
-    hf_token: str | None = Form(None),
-    device: str | None = Form(None),
     translate_to: str | None = Form(None),
     engine: str = Form("openai"),
-    diarizer: str = Form("sherpa"),
     num_speakers: int | None = Form(None),
 ) -> dict[str, str]:
     """Create a new transcription job.
@@ -169,19 +135,16 @@ async def create_transcription_job(
         file: Audio or video file
         api_key: OpenAI API key (required for ``engine=openai``)
         diarize: Enable speaker diarization
-        hf_token: HuggingFace token (pyannote diarizer only; falls back to HF_TOKEN)
-        device: Device for the pyannote diarizer (auto/cpu/cuda); sherpa always runs on CPU
         translate_to: Optional target language for translation (e.g., "Spanish", "French")
         engine: ``openai`` or ``local`` (local is a stub until core ships it; returns 501)
-        diarizer: ``sherpa`` (default, no token) or ``pyannote``
-        num_speakers: Known speaker count (sherpa); detected automatically when omitted
+        num_speakers: Known speaker count; detected automatically when omitted
 
     Returns:
         Job ID and status
     """
     logger.info(
         "Creating transcription job",
-        extra={"file_name": file.filename, "diarize": diarize, "engine": engine, "diarizer": diarizer},
+        extra={"file_name": file.filename, "diarize": diarize, "engine": engine},
     )
 
     if not file.filename:
@@ -189,7 +152,6 @@ async def create_transcription_job(
         raise HTTPException(status_code=422, detail="File must have a filename")
 
     _check_engine(engine, api_key)
-    hf_token = check_diarizer(diarizer, hf_token) if diarize else None
     validate_num_speakers(num_speakers)
 
     # Validate file extension
@@ -231,10 +193,7 @@ async def create_transcription_job(
         "file_size": len(content),
         "engine": engine,
         "diarize": diarize,
-        "diarizer": diarizer if diarize else None,
         "num_speakers": num_speakers if diarize else None,
-        "has_hf_token": bool(hf_token),
-        "device": device if diarize else None,
         "translate_to": translate_to,
         # Bounded queue for progress updates
         "progress_updates": asyncio.Queue(maxsize=MAX_PROGRESS_QUEUE_SIZE),
@@ -247,11 +206,8 @@ async def create_transcription_job(
             file.filename or "audio.mp3",
             api_key,
             diarize,
-            hf_token,
-            device,
             translate_to,
             engine=engine,
-            diarizer=diarizer,
             num_speakers=num_speakers,
         )
     )
@@ -375,19 +331,13 @@ async def translate_transcript(
 @router.post("/diarize")
 async def create_diarization_job(
     file: UploadFile = File(...),
-    hf_token: str | None = Form(None),
-    device: str | None = Form(None),
-    diarizer: str = Form("sherpa"),
     num_speakers: int | None = Form(None),
 ) -> dict[str, str]:
     """Create a diarization-only job (who speaks when; no transcript, no API key).
 
     Args:
         file: Audio or video file
-        hf_token: HuggingFace token (pyannote diarizer only; falls back to HF_TOKEN)
-        device: Device for the pyannote diarizer (auto/cpu/cuda)
-        diarizer: ``sherpa`` (default, no token) or ``pyannote``
-        num_speakers: Known speaker count (sherpa); detected automatically when omitted
+        num_speakers: Known speaker count; detected automatically when omitted
 
     Returns:
         Job ID and status
@@ -395,7 +345,6 @@ async def create_diarization_job(
     if not file.filename:
         raise HTTPException(status_code=422, detail="File must have a filename")
 
-    hf_token = check_diarizer(diarizer, hf_token)
     validate_num_speakers(num_speakers)
 
     job_id = str(uuid.uuid4())
@@ -404,16 +353,13 @@ async def create_diarization_job(
         "status": "pending",
         "filename": file.filename,
         "diarize_only": True,
-        "diarizer": diarizer,
         "num_speakers": num_speakers,
-        "has_hf_token": bool(hf_token),
-        "device": device,
         # Bounded queue for progress updates
         "progress_updates": asyncio.Queue(maxsize=MAX_PROGRESS_QUEUE_SIZE),
     }
 
     content = await file.read()
-    task = asyncio.create_task(_process_diarization(job_id, content, file.filename, hf_token, device, diarizer, num_speakers))
+    task = asyncio.create_task(_process_diarization(job_id, content, file.filename, num_speakers))
     _ = task
 
     return {
@@ -423,11 +369,9 @@ async def create_diarization_job(
     }
 
 
-def run_diarizer(
-    audio_path: Path, diarizer: str, hf_token: str | None, device: str | None, num_speakers: int | None
-) -> list[tuple[float, float, str]]:
-    """Blocking: run the chosen diarizer over a file (call via ``asyncio.to_thread``)."""
-    backend = build_diarizer(diarizer, hf_token=hf_token, device=device, num_speakers=num_speakers)
+def run_diarizer(audio_path: Path, num_speakers: int | None) -> list[tuple[float, float, str]]:
+    """Blocking: run sherpa diarization over a file (call via ``asyncio.to_thread``)."""
+    backend = build_diarizer(num_speakers=num_speakers)
     return backend.diarize_audio(audio_path)
 
 
@@ -443,9 +387,6 @@ async def _process_diarization(
     job_id: str,
     content: bytes,
     filename: str,
-    hf_token: str | None,
-    device: str | None = None,
-    diarizer: str = "sherpa",
     num_speakers: int | None = None,
 ) -> None:
     """Process diarization-only job asynchronously."""
@@ -455,7 +396,7 @@ async def _process_diarization(
         audio_path = _save_audio(job_id, content, filename)  # small sync write, as before
 
         _emit_progress(job_id, "Processing audio for speaker segments", "diarization")
-        turns = await asyncio.to_thread(run_diarizer, audio_path, diarizer, hf_token, device, num_speakers)
+        turns = await asyncio.to_thread(run_diarizer, audio_path, num_speakers)
 
         set_segments(jobs[job_id], speakers.turns_to_segments(turns))
         jobs[job_id]["status"] = "completed"
@@ -473,12 +414,9 @@ async def _process_transcription(
     filename: str,
     api_key: str | None,
     diarize: bool = False,  # noqa: FBT001, FBT002
-    hf_token: str | None = None,
-    device: str | None = None,
     translate_to: str | None = None,
     *,
     engine: str = "openai",
-    diarizer: str = "sherpa",
     num_speakers: int | None = None,
 ) -> None:
     """Process transcription job asynchronously: transcribe -> (diarize) -> (translate)."""
@@ -512,7 +450,7 @@ async def _process_transcription(
 
         if diarize:
             _emit_progress(job_id, "Identifying speakers", "diarization")
-            turns = await asyncio.to_thread(run_diarizer, audio_path, diarizer, hf_token, device, num_speakers)
+            turns = await asyncio.to_thread(run_diarizer, audio_path, num_speakers)
             result = label_transcript(result, turns)
             _emit_progress(job_id, "Speaker identification complete", "diarization")
 

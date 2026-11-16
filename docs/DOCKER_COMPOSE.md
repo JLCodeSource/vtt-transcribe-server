@@ -1,6 +1,6 @@
 # Docker Compose Setup Guide
 
-This guide explains how to run vtt-transcribe using Docker Compose for local development with a complete stack (API, worker, database, and optional frontend).
+This guide explains how to run vtt-transcribe using Docker Compose for local development with a complete stack (API, database, and optional frontend).
 
 ## Quick Start
 
@@ -50,7 +50,7 @@ This guide explains how to run vtt-transcribe using Docker Compose for local dev
 
 4. **Start services:**
    ```bash
-   # Start core services (DB, API, worker)
+   # Start core services (DB, API)
    docker compose up -d
    
    # Or include frontend
@@ -65,7 +65,6 @@ This guide explains how to run vtt-transcribe using Docker Compose for local dev
    You should see:
    - `vtt-transcribe-db` (healthy)
    - `vtt-transcribe-api` (healthy)
-   - `vtt-transcribe-worker` (running)
    - `vtt-transcribe-frontend` (if using --profile frontend)
 
 6. **Access the services:**
@@ -130,7 +129,7 @@ docker compose logs -f
 
 # Specific service
 docker compose logs -f api
-docker compose logs -f worker
+docker compose logs -f api
 ```
 
 ### Restart Services
@@ -172,7 +171,7 @@ docker compose exec -T db psql -U vtt_user vtt_transcribe < backup.sql
 docker compose exec api bash
 
 # Run CLI transcription
-docker compose exec worker python -c "import vtt_transcribe; print(vtt_transcribe.__version__)"
+docker compose exec api python -c "import vtt_transcribe; print(vtt_transcribe.__version__)"
 ```
 
 ## Development Workflow
@@ -220,7 +219,6 @@ See `.env.example` for complete list. Key variables:
 | `OPENAI_API_KEY` | Yes | - | OpenAI API key for Whisper |
 | `SECRET_KEY` | Yes | - | JWT signing key (32+ chars) |
 | `POSTGRES_PASSWORD` | Yes | - | Database password |
-| `HUGGINGFACE_TOKEN` | No | - | For speaker diarization |
 | `API_WORKERS` | No | 4 | Uvicorn worker processes |
 | `WORKER_CONCURRENCY` | No | 2 | Concurrent transcription jobs |
 | `LOG_LEVEL` | No | INFO | Logging verbosity |
@@ -228,7 +226,7 @@ See `.env.example` for complete list. Key variables:
 ## Volumes
 
 - **postgres_data:** Database files (persistent)
-- **upload_data:** Uploaded audio/video files (shared by API and worker)
+- **upload_data:** Uploaded audio/video files
 - **./logs:** Application logs (bind mount to host)
 
 ## Networking
@@ -236,7 +234,6 @@ See `.env.example` for complete list. Key variables:
 All services communicate via `vtt-network` bridge network. Service names resolve as hostnames:
 - `db` → PostgreSQL
 - `api` → FastAPI server
-- `worker` → Background worker
 
 ## Security Notes
 
@@ -294,11 +291,11 @@ docker compose exec api env | grep DATABASE_URL
 
 ### Worker not processing jobs
 ```bash
-# Check worker logs
-docker compose logs worker
+# Check API logs
+docker compose logs api
 
 # Verify it can connect to database
-docker compose exec worker env | grep DATABASE_URL
+docker compose exec api env | grep DATABASE_URL
 ```
 
 ## Next Steps
