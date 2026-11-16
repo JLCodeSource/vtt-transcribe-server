@@ -42,6 +42,10 @@ RUN useradd -m -u "$USER_UID" vttuser
 
 ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
+# sherpa diarization models (~46 MB) are downloaded once on first use; mount a volume here to keep them
+ENV VTT_MODEL_DIR=/app/models
+# uploaded audio kept per job for speaker sample clips (deleted with the job)
+ENV VTT_DATA_DIR=/app/jobs
 
 # ============================================================================
 # API Target - for FastAPI server
@@ -50,7 +54,7 @@ FROM base AS api
 
 COPY --from=builder /opt/venv /opt/venv
 
-RUN mkdir -p /app/uploads /app/logs && \
+RUN mkdir -p /app/uploads /app/logs /app/models /app/jobs && \
     chown -R vttuser:vttuser /app
 
 WORKDIR /app
