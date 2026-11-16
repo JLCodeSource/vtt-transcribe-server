@@ -104,7 +104,7 @@ is **[todo]**, only worth it once a third surface exists.
 
 ## 6. Deployment
 
-Single image, built from this repo's `Dockerfile` (`api` target): FastAPI + the built frontend are served from one container
+Single image, built from this repo's `Dockerfile` (`api` target): target: FastAPI serves the built frontend from the same container **[todo]** (today the frontend is a separate nginx image)
 (frontend nginx stays optional via the compose `frontend` profile for dev). Defaults: SQLite for a single small host,
 Postgres via compose when needed; `SECRET_KEY`, `ENCRYPTION_KEY`, `SESSION_SECRET` from the host's secret store.
 
