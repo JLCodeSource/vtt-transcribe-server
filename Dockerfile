@@ -1,26 +1,22 @@
 # Multi-stage Dockerfile for vtt-transcribe-server (API + worker images)
-# The core transcription package (vtt-transcribe) is installed as a dependency,
-# pinned in pyproject.toml / uv.lock. The CLI image lives in the public core repo.
+# The core transcription package (vtt-transcribe) is installed from PyPI as a dependency,
+# resolved in uv.lock. The CLI image lives in the public core repo.
 #
 # Build args:
-#   SYNC_ARGS  extra flags for `uv sync`, e.g. "--extra diarization" (pulls torch/pyannote; large)
+#   SYNC_ARGS  extra flags for `uv sync`. Default "--extra sherpa" = key-free CPU diarization
+#              (sherpa-onnx, ~46 MB models, no torch). Use "--extra diarization" to add pyannote/torch (large).
 
 # Build stage: resolve and install dependencies into /opt/venv
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# git: the core package is installed from its public GitHub repo (pinned commit)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
 RUN pip install --no-cache-dir uv
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_LINK_MODE=copy
 
-ARG SYNC_ARGS=""
+ARG SYNC_ARGS="--extra sherpa"
 
 # Dependency layer (cached until pyproject.toml / uv.lock change)
 COPY pyproject.toml uv.lock README.md ./
