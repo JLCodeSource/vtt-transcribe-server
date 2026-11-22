@@ -1,87 +1,81 @@
-name: Docker Build and Test (Base)
+name: Docker image
+
+# Builds the lean single-container image (API + bundled UI) and smoke-tests it. Runs only when something that goes into the
+# image changes, cancels superseded runs, and never pushes anywhere.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'vtt_server/**'
+      - 'frontend/**'
+      - '.github/workflows/docker-build-test.yml'
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'vtt_server/**'
+      - 'frontend/**'
+      - '.github/workflows/docker-build-test.yml'
 
 jobs:
-  docker-build-test-base:
-    name: Build and Test Base Image
+  build-and-smoke-test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    
+    timeout-minutes: 25
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
-      - name: Build base Docker image
-        uses: docker/build-push-action@v5
+
+      - name: Build image
+        uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          target: api-ui
           push: false
           load: true
-          tags: vtt-transcribe:test
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,mode=max,scope=base
-      
-      - name: Test Docker image - Help command
+          tags: vtt-server:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Runs as a non-root user
         run: |
-          docker run --rm vtt-transcribe:test --help
-      
-      - name: Test Docker image - Version check
+          uid=$(docker run --rm --entrypoint id vtt-server:test -u)
+          echo "uid=$uid"
+          test "$uid" != "0"
+
+      - name: Starts and reports healthy, and serves the UI
         run: |
-          docker run --rm vtt-transcribe:test --version
-      
-      - name: Verify non-root user
-        run: |
-          USER_ID=$(docker run --rm --entrypoint sh vtt-transcribe:test -c "id -u")
-          if [ "$USER_ID" = "1000" ]; then
-            echo "✓ Running as non-root user (UID: $USER_ID)"
-          else
-            echo "✗ Expected UID 1000, got $USER_ID"
-            exit 1
-          fi
-      
-      - name: Check image size
-        run: |
-          SIZE=$(docker image inspect vtt-transcribe:test --format='{{.Size}}')
-          SIZE_MB=$((SIZE / 1024 / 1024))
-          echo "Base image size: ${SIZE_MB}MB"
-          if [ $SIZE_MB -gt 1000 ]; then
-            echo "⚠ Warning: Base image size exceeds 1GB"
-          fi
-      
-      - name: Test stdin mode - Basic functionality
-        run: |
-          echo "Testing stdin mode with real fixture and missing API key..."
-          output=$(cat tests/hello_conversation.mp3 | docker run --rm -i vtt-transcribe:test 2>&1 || true)
-          if echo "$output" | grep -q "OpenAI API key not provided"; then
-            echo "✓ Stdin mode read input and returned expected missing API key error"
-          else
-            echo "✗ Stdin mode test failed (expected missing API key error)"
-            echo "$output"
-            exit 1
-          fi
-      
-      - name: Test stdin mode - Error handling
-        run: |
-          echo "Testing stdin mode flag validation..."
-          # Test that incompatible flags are rejected in stdin mode
-          output=$(echo "test" | docker run --rm -i vtt-transcribe:test -s output.txt 2>&1 || true)
-          if echo "$output" | grep -q "incompatible"; then
-            echo "✓ Incompatible -s flag correctly rejected"
-          else
-            echo "✗ Flag validation test failed"
-            echo "$output"
-            exit 1
-          fi
+          docker run -d --name vtt -p 8000:8000 \
+            -e SECRET_KEY=ci-secret-key-not-used-anywhere-else-0123456789 \
+            -e ENCRYPTION_KEY=NIiQ9PoBLY9fpqc_kWzhCE1EvcCpRzSZu9FT339Mz2k= \
+            -e DATABASE_URL=sqlite+aiosqlite:////tmp/ci.db \
+            vtt-server:test
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:8000/health; then echo; break; fi
+            echo "waiting... ($i/30)"; sleep 2
+          done
+          curl -fs http://localhost:8000/health
+          curl -fs http://localhost:8000/ | grep -qi "<html"
+          # the API is up and protected
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/engines)" = "401"
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs vtt || true

@@ -74,8 +74,16 @@ docker run --rm -v "$PWD/frontend":/w -w /w node:22-slim bash -c 'npm ci && npm 
 
 ## CI
 
-The repo is public, so GitHub Actions on standard runners are free. `.github/workflows/frontend-ci.yml` is path-filtered and
-cancels superseded runs. Run the checks above locally first; CI is a safety net, not the first line of testing.
+Three workflows, all path-filtered, with superseded runs cancelled and a timeout on every job:
+
+| Workflow | Runs when | Does |
+|---|---|---|
+| `ci.yml` | backend files change | `ruff check` and `pytest` (one job) |
+| `docker-build-test.yml` | anything in the image changes | builds the lean image, checks it runs as non-root, starts and answers `/health`, serves the UI, protects `/api` |
+| `frontend-ci.yml` | frontend or backend files change | Vitest unit tests; the browser end-to-end job is manual (`workflow_dispatch`) |
+
+The repo is public, so standard-runner minutes are free, but run the checks above locally first: CI is a safety net, not the
+first line of testing. Nothing is pushed to a registry by CI.
 
 ## Job queue
 
