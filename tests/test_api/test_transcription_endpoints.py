@@ -195,7 +195,7 @@ class TestAPITranscriptionCoverage:
         """Test /diarize endpoint async processing path (lines 126-138)."""
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
 
         client = TestClient(app)
 
@@ -218,7 +218,7 @@ class TestAPITranscriptionCoverage:
         """
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
 
         client = TestClient(app)
 
@@ -239,7 +239,7 @@ class TestAPITranscriptionCoverage:
         """Test exception handling in _process_diarization (lines 126-138)."""
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
 
         client = TestClient(app)
 

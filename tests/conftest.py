@@ -16,6 +16,7 @@ os.environ.setdefault("VTT_LOGIN_RATE_LIMIT", "0")
 os.environ.setdefault("VTT_REGISTER_RATE_LIMIT", "0")
 os.environ.setdefault("VTT_MAX_ACTIVE_JOBS_PER_USER", "0")  # job capacity has its own tests
 os.environ.setdefault("VTT_MAX_ACTIVE_JOBS", "0")
+os.environ.setdefault("VTT_STATIC_DIR", "")  # a locally built UI in vtt_server/static must not change the API tests
 os.environ.setdefault("ENCRYPTION_KEY", "eZG7WcaEfouAvUvzsF8dpS1Arw-lfhjCs5LU4gzuXVE=")
 
 # Load .env file at module import time (before pytest collection)

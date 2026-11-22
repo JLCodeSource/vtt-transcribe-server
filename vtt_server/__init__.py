@@ -1,9 +1,5 @@
-"""FastAPI web service for vtt-transcribe."""
+"""FastAPI web service for vtt-transcribe.
 
-__all__ = ["app"]
-
-try:
-    from vtt_server.app import app
-except ImportError:
-    # API dependencies not available
-    app = None  # type: ignore[assignment]
+Importing the package is cheap on purpose: the application (``vtt_server.app``) reads its secrets and database settings
+when it is imported, so the ``vtt-server`` command must be able to start (and print ``--help``) before any of that is set.
+"""

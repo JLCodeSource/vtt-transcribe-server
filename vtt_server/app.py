@@ -11,9 +11,9 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from vtt_transcribe import __version__
 
 from vtt_server import jobqueue
+from vtt_server._version import __version__
 from vtt_server.database import init_db
 from vtt_server.routes import admin, api_keys, auth, health, jobs, profile, speakers, transcription, websockets
 
@@ -123,10 +123,21 @@ app.include_router(profile.router)
 app.include_router(websockets.router)
 
 
-# Optional single-container mode: serve the built frontend (target ``api-ui`` in the Dockerfile sets
-# VTT_STATIC_DIR). Without it the API runs alone and the frontend ships as its own nginx image.
-_static_dir = os.getenv("VTT_STATIC_DIR")
-_serve_ui = bool(_static_dir) and Path(_static_dir).is_dir()
+# The web UI is served from the same process when a built copy is available: ``VTT_STATIC_DIR`` if set (an empty value
+# switches the UI off), otherwise the copy packaged inside the wheel (``vtt_server/static``). With neither, the API runs
+# alone and the frontend ships as its own nginx image.
+_PACKAGED_UI = Path(__file__).parent / "static"
+
+
+def _ui_dir() -> Path | None:
+    configured = os.getenv("VTT_STATIC_DIR")
+    if configured is not None:
+        return Path(configured) if configured and Path(configured).is_dir() else None
+    return _PACKAGED_UI if (_PACKAGED_UI / "index.html").is_file() else None
+
+
+_static_dir = _ui_dir()
+_serve_ui = _static_dir is not None
 
 
 @app.get("/" if not _serve_ui else "/api-info")

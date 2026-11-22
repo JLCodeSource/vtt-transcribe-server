@@ -408,7 +408,7 @@ class TestAPIWebsocketsCoverage:
         """Test websocket handling when job doesn't exist or gets deleted (lines 27-28)."""
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
 
         client = TestClient(app)
 
@@ -426,7 +426,7 @@ class TestAPIWebsocketsCoverage:
         """Test websocket detects status transitions (line 42)."""
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
 
         client = TestClient(app)
 
@@ -452,7 +452,7 @@ class TestAPIWebsocketsCoverage:
         """Test websocket general exception handling (lines 58, 60-61)."""
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
         from vtt_server.routes.transcription import jobs
 
         client = TestClient(app)
@@ -487,7 +487,7 @@ class TestAPIWebsocketsCoverageComplete:
         """Test websocket handling when job is deleted (lines 27-28)."""
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
         from vtt_server.routes.transcription import jobs
 
         client = TestClient(app)
@@ -521,7 +521,7 @@ class TestAPIWebsocketsCoverageComplete:
         """Test websocket detects status changes (line 44)."""
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
 
         client = TestClient(app)
 
@@ -542,7 +542,7 @@ class TestAPIWebsocketsCoverageComplete:
         """Test websocket handling of failed status (lines 51-52)."""
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
         from vtt_server.routes.transcription import jobs
 
         client = TestClient(app)
@@ -580,7 +580,7 @@ class TestAPIWebsocketsCoverageComplete:
         """Test websocket exception handling (line 58)."""
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
 
         client = TestClient(app)
 
@@ -599,7 +599,7 @@ class TestWebsocketEdgeCases:
 
     def test_websocket_with_missing_job(self) -> None:
         """Test websocket with job that doesn't exist (lines 27-28)."""
-        from vtt_server import app
+        from vtt_server.app import app
 
         client = TestClient(app)
 
@@ -614,7 +614,7 @@ class TestWebsocketEdgeCases:
 
     def test_websocket_status_change_loop(self) -> None:
         """Test websocket detects status changes in polling loop (line 42)."""
-        from vtt_server import app
+        from vtt_server.app import app
         from vtt_server.routes.transcription import jobs
 
         client = TestClient(app)
@@ -653,7 +653,7 @@ class TestWebsocketEdgeCases:
 
     def test_websocket_exception_in_send(self) -> None:
         """Test exception handling in websocket loop (line 58)."""
-        from vtt_server import app
+        from vtt_server.app import app
         from vtt_server.routes.transcription import jobs
 
         client = TestClient(app)
