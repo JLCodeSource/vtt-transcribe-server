@@ -10,7 +10,8 @@
   const { onuploadstart }: Props = $props();
 
   let isDragging = $state(false);
-  let selectedFile: File | null = $state(null);
+  // Several files can be chosen or dropped at once; each becomes its own job and waits its turn in the queue.
+  let selectedFiles: File[] = $state([]);
   const options: UploadOptions = $state({
     diarization: true,
     engine: 'openai',
@@ -89,41 +90,82 @@
     isDragging = false;
   }
 
+  const sameFile = (a: File, b: File) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+
+  /** Add valid files to the list (duplicates ignored) and report the ones that were rejected. */
+  function addFiles(incoming: FileList | File[] | null | undefined) {
+    if (!incoming || incoming.length === 0) return;
+    const next = [...selectedFiles];
+    const problems: string[] = [];
+    for (const file of Array.from(incoming)) {
+      const error = validateFile(file);
+      if (error) {
+        problems.push(`${file.name}: ${error}`);
+      } else if (!next.some((f) => sameFile(f, file))) {
+        next.push(file);
+      }
+    }
+    selectedFiles = next;
+    validationError = problems.join('\n');
+  }
+
   function handleDrop(event: DragEvent) {
     event.preventDefault();
     isDragging = false;
-
-    const files = event.dataTransfer?.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      const error = validateFile(file);
-      if (error) {
-        validationError = error;
-        selectedFile = null;
-      } else {
-        validationError = '';
-        selectedFile = file;
-      }
-    }
+    addFiles(event.dataTransfer?.files);
   }
 
   function handleFileSelect(event: Event) {
     const target = event.target as HTMLInputElement;
-    if (target.files && target.files.length > 0) {
-      const file = target.files[0];
-      const error = validateFile(file);
-      if (error) {
-        validationError = error;
-        selectedFile = null;
-      } else {
-        validationError = '';
-        selectedFile = file;
-      }
+    addFiles(target.files);
+    target.value = ''; // so choosing the same file again still fires a change
+  }
+
+  function removeFile(file: File) {
+    selectedFiles = selectedFiles.filter((f) => f !== file);
+    validationError = '';
+  }
+
+  /** Send one file as its own job; resolves with the queued job. */
+  async function submitFile(file: File): Promise<TranscriptionJob> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('engine', options.engine ?? 'openai');
+    if (options.apiKey) {
+      formData.append('api_key', options.apiKey);
+      // kept for this tab only, so Translate / re-run can reuse it; never persisted
+      sessionStorage.setItem('openai_api_key', options.apiKey);
     }
+    formData.append('diarize', String(options.diarization));
+    if (options.diarization && options.numSpeakers && options.numSpeakers !== 'auto') {
+      formData.append('num_speakers', options.numSpeakers);
+    }
+    if (options.retentionMode) {
+      formData.append('retention_mode', options.retentionMode);
+      if (options.retentionMode === 'hold') formData.append('retention_days', options.retentionDays || '7');
+    }
+    if (options.translateTo?.trim()) {
+      formData.append('translate_to', options.translateTo.trim());
+    }
+    if (options.language && options.language !== 'auto') {
+      formData.append('language', options.language);
+    }
+
+    const response = await fetch('/api/transcribe', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({ detail: response.statusText }))) as { detail?: string };
+      throw new Error(errorData.detail || `Upload failed: ${response.statusText}`);
+    }
+    return (await response.json()) as TranscriptionJob;
   }
 
   async function handleUpload() {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
 
     // Validate required fields
     if (needsKey && !options.apiKey) {
@@ -132,72 +174,50 @@
     }
 
     isUploading = true;
+    validationError = '';
+    const queued: TranscriptionJob[] = [];
+    let failure = '';
 
-    try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('engine', options.engine ?? 'openai');
-      if (options.apiKey) {
-        formData.append('api_key', options.apiKey);
-        // kept for this tab only, so Translate / re-run can reuse it; never persisted
-        sessionStorage.setItem('openai_api_key', options.apiKey);
+    // One after another, in the order listed, so they queue in that order. Stop at the first refusal (for example the
+    // per-user queue limit) and keep the rest listed so nothing is lost.
+    for (const file of [...selectedFiles]) {
+      try {
+        queued.push(await submitFile(file));
+        selectedFiles = selectedFiles.filter((f) => f !== file);
+      } catch (error) {
+        failure = `${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        break;
       }
-      formData.append('diarize', String(options.diarization));
-      if (options.diarization && options.numSpeakers && options.numSpeakers !== 'auto') {
-        formData.append('num_speakers', options.numSpeakers);
-      }
-      if (options.retentionMode) {
-        formData.append('retention_mode', options.retentionMode);
-        if (options.retentionMode === 'hold') formData.append('retention_days', options.retentionDays || '7');
-      }
-      if (options.translateTo?.trim()) {
-        formData.append('translate_to', options.translateTo.trim());
-      }
-      
-      if (options.language && options.language !== 'auto') {
-        formData.append('language', options.language);
-      }
+    }
+    isUploading = false;
 
-      const response = await fetch('/api/transcribe', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => ({ detail: response.statusText }))) as { detail?: string };
-        throw new Error(errorData.detail || `Upload failed: ${response.statusText}`);
-      }
-
-      const job = (await response.json()) as TranscriptionJob;
-
-      // Ready for the next file; the app moves on to the Jobs page, where the job waits in the queue
-      selectedFile = null;
-      isUploading = false;
-      const event = new CustomEvent<TranscriptionJob>('uploadstart', { detail: job });
-      onuploadstart(event);
-    } catch (error) {
-      alert(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      isUploading = false;
+    if (failure) {
+      validationError =
+        `Queued ${queued.length} of ${queued.length + selectedFiles.length}. Could not queue ${failure}` +
+        (selectedFiles.length > 1 ? `\nThe ${selectedFiles.length} files that were not queued are still listed.` : '');
+    } else if (queued.length > 0) {
+      // The app moves on to the Jobs page, where the jobs wait their turn in the queue
+      onuploadstart(new CustomEvent<TranscriptionJob>('uploadstart', { detail: queued[0] }));
     }
   }
 
-  function clearFile() {
-    selectedFile = null;
+  function clearFiles() {
+    selectedFiles = [];
+    validationError = '';
   }
 </script>
 
 <div class="upload-container">
   <div class="dropzone"
     class:dragging={isDragging}
-    class:has-file={selectedFile}
+    class:has-file={selectedFiles.length > 0}
     ondragover={handleDragOver}
     ondragleave={handleDragLeave}
     ondrop={handleDrop}
     role="region"
     aria-label="File upload dropzone"
   >
-    {#if !selectedFile}
+    {#if selectedFiles.length === 0}
       <div class="dropzone-content">
         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path
@@ -207,7 +227,7 @@
             d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
           />
         </svg>
-        <h3>Drop your video file here</h3>
+        <h3>Drop your video or audio files here</h3>
         <p>or</p>
         <label for="file-input" class="file-label">
           <button
@@ -215,40 +235,51 @@
             class="primary"
             onclick={() => document.getElementById('file-input')?.click()}
           >
-            Choose File
+            Choose Files
           </button>
         </label>
-        <input
-          id="file-input"
-          type="file"
-          accept="video/*,audio/*"
-          onchange={handleFileSelect}
-          style="display: none;"
-        />
-        <p class="hint">Supports MP4, AVI, MOV, MP3, WAV, and more</p>
+        <p class="hint">Supports MP4, AVI, MOV, MP3, WAV, and more. Pick as many files as you like; each is queued separately.</p>
       </div>
     {:else}
-      <div class="file-selected">
-        <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-          />
-        </svg>
-        <div class="file-info">
-          <h4>{selectedFile.name}</h4>
-          <p>{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
-        </div>
-        <button type="button" class="clear-btn" onclick={clearFile} disabled={isUploading}>
-          ✕
+      <ul class="file-list" aria-label="Selected files">
+        {#each selectedFiles as file (file.name + file.size + file.lastModified)}
+          <li class="file-selected">
+            <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+            <div class="file-info">
+              <h4>{file.name}</h4>
+              <p>{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+            </div>
+            <button type="button" class="clear-btn" onclick={() => removeFile(file)} disabled={isUploading} aria-label={`Remove ${file.name}`}>
+              ✕
+            </button>
+          </li>
+        {/each}
+      </ul>
+      <div class="file-actions">
+        <button type="button" class="secondary" onclick={() => document.getElementById('file-input')?.click()} disabled={isUploading}>
+          Add more files
         </button>
+        <button type="button" class="secondary" onclick={clearFiles} disabled={isUploading}>Clear all</button>
       </div>
     {/if}
+    <input
+      id="file-input"
+      type="file"
+      multiple
+      accept="video/*,audio/*"
+      onchange={handleFileSelect}
+      style="display: none;"
+    />
   </div>
 
-  {#if selectedFile}
+  {#if selectedFiles.length > 0}
     <div class="options">
       <h3>Transcription Options</h3>
 
@@ -345,13 +376,13 @@
       </label>
 
       <button type="button" class="primary upload-btn" onclick={handleUpload} disabled={isUploading}>
-        {isUploading ? 'Uploading...' : 'Add to queue'}
+        {isUploading ? 'Uploading...' : selectedFiles.length > 1 ? `Add ${selectedFiles.length} files to queue` : 'Add to queue'}
       </button>
     </div>
   {/if}
 
   {#if validationError}
-    <div class="error-message">
+    <div class="error-message" role="alert" style="white-space: pre-line;">
       {validationError}
     </div>
   {/if}
@@ -412,6 +443,24 @@
   .hint {
     font-size: 0.875rem;
     margin-top: 0.5rem !important;
+  }
+
+  .file-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 22rem;
+    overflow-y: auto;
+  }
+
+  .file-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    margin-top: 1rem;
   }
 
   .file-selected {
