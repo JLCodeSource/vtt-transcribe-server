@@ -31,6 +31,7 @@ from vtt_server.engines import (
     make_local_translate_fn,
     validate_engine,
 )
+from vtt_server.errors import friendly_error
 from vtt_server.jobqueue import (
     JobCancelled,
     attach_progress,
@@ -572,8 +573,9 @@ async def _process_diarization(
         await _finish(job, "cancelled")
     except Exception as e:
         logger.exception("Diarization job failed", extra={"job_id": job_id})
-        _emit_progress(job_id, f"Diarization failed: {e}", "error")
-        await _finish(job, "failed", str(e))
+        reason = friendly_error(e)
+        _emit_progress(job_id, f"Diarization failed: {reason}", "error")
+        await _finish(job, "failed", reason)
 
 
 async def _process_transcription(
@@ -668,8 +670,9 @@ async def _process_transcription(
             "Transcription job failed",
             extra={"job_id": job_id, "duration_seconds": round(time.time() - start_time, 2), "error": str(e)},
         )
-        _emit_progress(job_id, f"Transcription failed: {e}", "error")
-        await _finish(job, "failed", str(e))
+        reason = friendly_error(e)
+        _emit_progress(job_id, f"Transcription failed: {reason}", "error")
+        await _finish(job, "failed", reason)
 
 
 def make_transcriber(engine: str, api_key: str | None) -> Any:

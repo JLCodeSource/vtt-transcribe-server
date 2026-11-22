@@ -305,7 +305,7 @@ class TestTranscriptionAsyncPaths:
             # Verify job marked as failed
             assert jobs[job_id]["status"] == "failed"
             assert "error" in jobs[job_id]
-            assert "Transcription failed" in jobs[job_id]["error"]
+            assert "failed on the server" in jobs[job_id]["error"]  # generic wording; details stay in the log
 
     def test_transcription_complete_success_path(self) -> None:
         """Test successful transcription completion (lines 168-169)."""
