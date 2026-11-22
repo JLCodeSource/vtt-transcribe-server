@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from vtt_server import jobqueue, mailer, retention
+from vtt_server import jobqueue, mailer, retention, versions
 from vtt_server.app import app
 from vtt_server.auth import get_password_hash
 from vtt_server.database import Base, get_db
@@ -180,8 +180,8 @@ def test_jobs_survive_a_restart_and_unfinished_ones_are_requeued(
 
     assert asyncio.run(scenario()) == 2
     assert clean_jobs["done"]["status"] == "completed"
-    assert clean_jobs["done"]["segments"] == done["segments"]
-    assert clean_jobs["done"]["speaker_names"] == {"S": "Alice"}
+    assert clean_jobs["done"]["segments"] == [{"start": 0, "end": 1, "text": "hi"}]
+    assert clean_jobs["done"]["schema"] == 2  # a job saved before versions existed is upgraded on load
     assert clean_jobs["running"]["status"] == "pending"
     assert clean_jobs["running"]["secret"] == "enc"  # the encrypted per-job key is kept until it ends
     assert [j["job_id"] for j in jobqueue.waiting(clean_jobs)] == ["running", "waiting"]  # FIFO preserved
@@ -352,9 +352,9 @@ def test_download_marks_the_job_downloaded_and_starts_the_delete_grace(client: T
     with patch("vtt_server.engines.local_engine_available", return_value=True):
         job_id = submit(client, alice, retention_mode="delete")["job_id"]
     job = tx.jobs[job_id]
-    segments = [{"start": 0, "end": 2, "text": "hello", "speaker": "SPEAKER_00"}]
     job.update(status="completed", completed_at=datetime.now(UTC).isoformat(), result="x")
-    tx.set_segments(job, segments)
+    versions.set_original(job, [{"start": 0, "end": 2, "text": "hello"}])
+    versions.add_diarization(job, [], None, labels=["SPEAKER_00"])
     retention.apply_expiry(job)
     before = job["expires_at"]
     assert client.get(f"/api/jobs/{job_id}/download", headers=alice).status_code == 200

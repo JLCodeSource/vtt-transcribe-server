@@ -20,7 +20,7 @@ from vtt_transcribe.logging_config import get_logger
 from vtt_transcribe.transcriber import VideoTranscriber
 from vtt_transcribe.translator import AudioTranslator
 
-from vtt_server import mailer, retention
+from vtt_server import mailer, retention, versions
 from vtt_server.access import check_capacity, owned_job, public_view
 from vtt_server.auth import get_current_active_user
 from vtt_server.engines import (
@@ -523,14 +523,6 @@ def run_diarizer(
     return backend.diarize_audio(audio_path)
 
 
-def set_segments(job: dict[str, Any], segments: list[dict[str, Any]]) -> None:
-    """Store structured segments and refresh the human-readable ``result`` (names applied)."""
-    job["segments"] = segments
-    job.setdefault("speaker_names", {})
-    translated = bool(job.get("translated_to")) and any(s.get("translation") for s in segments)
-    job["result"] = speakers.to_result(speakers.labelled(segments, job["speaker_names"], translated=translated))
-
-
 async def run_job(job: dict[str, Any]) -> None:
     """Run one queued job to the end (called by the worker, one job at a time)."""
     job_id = job["job_id"]
@@ -597,7 +589,8 @@ async def _process_diarization(
         turns = await asyncio.to_thread(run_diarizer, audio_path, num_speakers, _step_cb(job, "diarizing"))
         checkpoint(job)
 
-        set_segments(job, speakers.turns_to_segments(turns))
+        versions.set_original(job, speakers.turns_to_segments(turns))  # text-less: the turns are the segments
+        versions.add_diarization(job, turns, num_speakers, labels=[t[2] for t in turns])
         _emit_progress(job_id, "Diarization complete", "diarization")
         await _finish(job, "completed")
     except JobCancelled:
@@ -664,12 +657,13 @@ async def _process_transcription(
             _emit_progress(job_id, "Identifying speakers", "diarization")
             turns = await asyncio.to_thread(run_diarizer, audio_path, num_speakers, _step_cb(job, "diarizing"))
             checkpoint(job)
-            result = label_transcript(result, turns)
             _emit_progress(job_id, "Speaker identification complete", "diarization")
 
         segments = speakers.parse_transcript(result)
         if segments:
-            set_segments(job, segments)
+            versions.set_original(job, segments)  # the spoken-language text, kept untouched from here on
+            if diarize:
+                versions.add_diarization(job, turns, num_speakers)
         else:  # engine returned something unstructured; keep it verbatim
             job["result"] = result
 
@@ -737,24 +731,24 @@ def label_transcript(transcript: str, turns: list[tuple[float, float, str]]) -> 
 
 async def translate_job_segments(
     job: dict[str, Any], api_key: str | None, target_language: str, *, engine: str | None = None
-) -> None:
-    """Translate a job's segments in place (``translation`` per segment) with the job's engine.
+) -> str:
+    """Translate the job's original text and ADD it as a language version (the original and other languages are kept).
 
-    Speakers are not sent to the model (core's ``translate_segments``), so names/ids can be renamed or merged
-    before *or* after translating without redoing it. ``engine=local`` translates on-box and needs no key.
+    Speakers are not sent to the model (core's ``translate_segments``), so names and diarization versions are unaffected.
+    ``engine=local`` translates on-box and needs no key. Returns the language key the version is stored under.
     """
     engine = engine or job.get("engine") or "openai"
     translate = make_translate_fn(
         engine, api_key, target_language, job.get("detected_language"), progress_callback(job, "translating")
     )
     segments = job.get("segments")
-    if not segments:  # unstructured result: translate it verbatim
-        job["result"] = await asyncio.to_thread(translate, job["result"])
-        job["translated_to"] = target_language
-        return
-    translated = await asyncio.to_thread(speakers.translate_segments, segments, translate)
-    job["translated_to"] = target_language
-    set_segments(job, translated)  # result now reads in the target language
+    if not segments:
+        msg = "This job has no structured transcript to translate"
+        raise ValueError(msg)
+    translated = await asyncio.to_thread(speakers.translate_segments, versions.base_segments(segments), translate)
+    return versions.add_translation(
+        job, target_language, [s["translation"] for s in translated], engine=engine, source=job.get("detected_language")
+    )
 
 
 def _parse_transcript_segments(transcript: str) -> list[dict[str, Any]]:
@@ -870,21 +864,34 @@ _MEDIA_TYPES = {
 }
 
 
+def _render_download(job: dict[str, Any], fmt: str, language: str | None, diarization: str | None, both: bool) -> str:  # noqa: FBT001
+    """The export for one (language, diarization) pair; unstructured results are parsed on the fly."""
+    if versions.has_versions(job):
+        try:
+            return versions.render(job, fmt, language=language, dia_id=diarization, both=both)
+        except versions.VersionError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    segments = _parse_transcript_segments(job["result"])  # the engine returned text without timestamps
+    if not segments:
+        raise HTTPException(status_code=404, detail="No segments found in transcript")
+    if fmt == "json":
+        return json.dumps({"segments": segments}, ensure_ascii=False, indent=2)
+    return {"txt": _format_as_txt, "vtt": _format_as_vtt, "srt": _format_as_srt}[fmt](segments)
+
+
 @router.get("/jobs/{job_id}/download")
 async def download_transcript(
     job: dict[str, Any] = Depends(owned_job),
     format: str = Query("txt", pattern="^(txt|vtt|srt|json)$"),  # noqa: A002
-    translated: bool = Query(False, description="Export the translation instead of the original text"),  # noqa: FBT001, FBT003
+    language: str | None = Query(None, description="'original' (default) or the language of a stored translation"),
+    diarization: str | None = Query(None, description="Diarization version id (default: the active one)"),
+    bilingual: bool = Query(False, description="Original and translation together (needs language)"),  # noqa: FBT001, FBT003
+    translated: bool = Query(False, description="Legacy: the most recent translation"),  # noqa: FBT001, FBT003
 ) -> PlainTextResponse:
-    """Download transcript in specified format, with speaker names applied as ``Name: text``.
+    """Download one chosen (language, diarization) combination, with speaker names applied as ``Name: text``.
 
-    Args:
-        job_id: Job ID
-        format: Output format (txt, vtt, srt or json)
-        translated: Use the translated text when the job has a translation
-
-    Returns:
-        Formatted transcript file
+    Every version stays available: pick the language (``original`` or any stored translation) and the diarization
+    version explicitly; ``bilingual=true`` puts original and translation in one file.
     """
     if job["status"] != "completed":
         raise HTTPException(status_code=400, detail=f"Job not completed. Status: {job['status']}")
@@ -894,29 +901,11 @@ async def download_transcript(
         retention.apply_expiry(job)
         await store.save(job)
 
-    result = job.get("result", "")
-    if not result:
+    if not job.get("result"):
         raise HTTPException(status_code=404, detail="No transcript available")
 
-    if job.get("segments"):
-        segments = speakers.labelled(job["segments"], job.get("speaker_names", {}), translated=translated)
-    else:
-        # Legacy / unstructured result: parse it
-        segments = _parse_transcript_segments(result)
-
-    if not segments:
-        raise HTTPException(status_code=404, detail="No segments found in transcript")
-
-    if format == "json":
-        content = json.dumps({"segments": segments}, ensure_ascii=False, indent=2)
-    elif job.get("segments"):
-        content = {"txt": speakers.to_txt, "vtt": speakers.to_vtt, "srt": speakers.to_srt}[format](segments)
-    elif format == "txt":
-        content = _format_as_txt(segments)
-    elif format == "vtt":
-        content = _format_as_vtt(segments)
-    else:  # srt
-        content = _format_as_srt(segments)
+    language = language or (versions.latest_language(job) if translated else None)
+    content = _render_download(job, format, language, diarization, bilingual)
 
     return PlainTextResponse(
         content=content,

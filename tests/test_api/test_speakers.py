@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from vtt_transcribe import speakers
 
+from vtt_server import versions
 from vtt_server.routes.transcription import _process_transcription, jobs
 
 TRANSCRIPT = (
@@ -35,10 +36,8 @@ def job():
     job_id = "spk-job"
     segs = speakers.parse_transcript(TRANSCRIPT)
     jobs[job_id] = {"job_id": job_id, "status": "completed", "filename": "a.mp3", "diarize": True}
-    jobs[job_id]["speaker_names"] = {}
-    from vtt_server.routes.transcription import set_segments
-
-    set_segments(jobs[job_id], segs)
+    versions.set_original(jobs[job_id], segs)
+    versions.add_diarization(jobs[job_id], [], None, labels=[s["speaker"] for s in segs])
     yield job_id
     jobs.pop(job_id, None)
 
@@ -189,7 +188,9 @@ class TestPipeline:
             vt.return_value.transcribe.return_value = "[00:00:00 - 00:00:10] hello"
             asyncio.run(_process_transcription("p1", b"x", "a.mp3", "k", True))
         assert jobs["p1"]["status"] == "completed"
-        assert jobs["p1"]["segments"][0]["speaker"] == "SPEAKER_00"
+        assert "speaker" not in jobs["p1"]["segments"][0]  # the original text is stored without any speaker
+        assert jobs["p1"]["diarizations"][0]["labels"] == ["SPEAKER_00"]
+        assert jobs["p1"]["diarizations"][0]["turns"] == [[0, 10, "SPEAKER_00"]]  # the raw turns are kept
         assert jobs["p1"]["result"] == "[00:00:00 - 00:00:10] Speaker 1: hello"
         from vtt_server.routes.transcription import purge_job
 
