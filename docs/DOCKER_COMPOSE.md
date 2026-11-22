@@ -102,7 +102,7 @@ This guide explains how to run vtt-transcribe using Docker Compose for local dev
 - **Port:** 5432
 - **Credentials:** See `.env` file
 - **Data:** Persisted in `postgres_data` volume
-- **Schema:** Auto-initialized from `docker/init-db.sql`
+- **Schema:** created and upgraded by the API itself at startup (`vtt_server.database.init_db`: missing tables and columns are added). There is no SQL init script; one used to ship in `docker/` and its UUID-keyed tables did not match the application, so sign-up failed on a fresh database
 
 ### API Server (FastAPI)
 - **Port:** 8000
@@ -246,8 +246,7 @@ All services communicate via `vtt-network` bridge network. Service names resolve
 
    Docker Compose will fail to start if these are not set.
 
-2. **Change default admin user password:**
-   - See `docker/init-db.sql` and update the default password hash
+2. **No default users exist.** Register the first account in the web app (or set `VTT_ALLOW_REGISTRATION=false` afterwards and create users another way).
 
 3. **Update CORS origins:**
    - Add your production domains to `CORS_ORIGINS`
@@ -256,8 +255,7 @@ All services communicate via `vtt-network` bridge network. Service names resolve
    - Use reverse proxy (nginx, Caddy, Traefik)
    - Don't expose API directly to internet
 
-5. **Review database init:**
-   - Remove or change default admin user in `docker/init-db.sql`
+5. **Back up the database volume** (`postgres_data`) and keep `ENCRYPTION_KEY`: it protects stored API keys.
 
 ## Troubleshooting
 
