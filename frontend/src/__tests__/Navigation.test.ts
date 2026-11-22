@@ -35,7 +35,7 @@ describe('Navigation', () => {
     it('renders menu items as buttons', () => {
       render(Navigation);
       const buttons = screen.getAllByRole('button');
-      expect(buttons.length).toBe(4);
+      expect(buttons.length).toBe(5);
     });
   });
 
@@ -144,7 +144,7 @@ describe('Navigation', () => {
     it('has correct menu item count', () => {
       render(Navigation);
       const listItems = screen.getByRole('list').querySelectorAll('li');
-      expect(listItems.length).toBe(4);
+      expect(listItems.length).toBe(5);
     });
 
     it('has home as first menu item', () => {
