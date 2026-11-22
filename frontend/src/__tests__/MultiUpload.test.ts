@@ -100,3 +100,32 @@ describe('uploading several files at once', () => {
     expect([...list.querySelectorAll('h4')].map((h) => h.textContent)).toEqual(['two.mp3', 'three.mp3']);
   });
 });
+
+describe('a saved default engine this server does not have', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('falls back to an engine that works', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/profile') return ok({ ...profile, default_options: { engine: 'local' } });
+        if (url === '/api/engines') {
+          return ok({
+            engines: [
+              { id: 'openai', label: 'OpenAI', requires_api_key: true, available: true },
+              { id: 'local', label: 'Local', requires_api_key: false, available: false },
+            ],
+            max_speakers: 12,
+          });
+        }
+        return ok({});
+      }),
+    );
+    const { container } = render(FileUpload, { props: { onuploadstart: () => {} } });
+    const input = container.querySelector('#file-input') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [audio('a.mp3')], configurable: true });
+    await fireEvent.change(input);
+    const select = (await screen.findByLabelText('Engine')) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('openai'));
+  });
+});
