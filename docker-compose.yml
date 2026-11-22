@@ -13,7 +13,6 @@ services:
       POSTGRES_HOST_AUTH_METHOD: ${POSTGRES_HOST_AUTH_METHOD:-scram-sha-256}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
@@ -45,6 +44,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: api
+      args:
+        # "--extra local" adds the key-free engine (faster-whisper + local translation; a larger image)
+        SYNC_ARGS: ${SYNC_ARGS:-}
     container_name: vtt-transcribe-api
     restart: unless-stopped
     environment:
@@ -84,7 +86,7 @@ services:
 
       # Storage
       UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
-      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-104857600}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-4294967296}
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

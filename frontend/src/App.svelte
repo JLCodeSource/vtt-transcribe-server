@@ -5,13 +5,24 @@
   import FileUpload from './components/FileUpload.svelte';
   import TranscriptViewer from './components/TranscriptViewer.svelte';
   import SpeakerReview from './components/SpeakerReview.svelte';
-  import { changePassword, fetchMe, fetchSegments, setAuthToken, translateJob } from './api';
+  import {
+    changePassword,
+    deleteDiarization,
+    deleteTranslation,
+    fetchMe,
+    fetchSegments,
+    fetchVersions,
+    rediarize,
+    setActiveDiarization,
+    setAuthToken,
+    translateJob,
+  } from './api';
   import Admin from './components/Admin.svelte';
   import ChangePassword from './components/ChangePassword.svelte';
   import Jobs from './components/Jobs.svelte';
   import Profile from './components/Profile.svelte';
   import Login from './components/Login.svelte';
-  import type { JobSummary, SegmentsResponse, TranscriptionJob, TranscriptSegment } from './types';
+  import type { JobSummary, SegmentsResponse, TranscriptionJob, TranscriptSegment, VersionsResponse } from './types';
 
   // Auth state
   let isAuthenticated = $state(false);
@@ -33,6 +44,9 @@
   let transcript: TranscriptSegment[] = $state([]);
   let segmentsData: SegmentsResponse | null = $state(null);
   let reviewing = $state(false);
+  // Every version of the output is kept; these pick what is shown: a language and (the active) diarization.
+  let versions: VersionsResponse | null = $state(null);
+  let viewLanguage = $state('original');
   let jobError = $state('');
 
   // User-friendly error messages for OAuth errors
@@ -269,14 +283,24 @@
     }));
   }
 
+  async function refreshView() {
+    if (!currentJob) return;
+    const id = currentJob.job_id;
+    versions = await fetchVersions(id);
+    if (viewLanguage !== 'original' && !versions.translations.some((t) => t.language === viewLanguage)) viewLanguage = 'original';
+    applySegments(await fetchSegments(id, viewLanguage));
+  }
+
   async function openJob(summary: JobSummary) {
     jobError = '';
     currentJob = { job_id: summary.job_id, filename: summary.filename, status: summary.status };
     transcript = [];
     segmentsData = null;
+    versions = null;
+    viewLanguage = 'original';
     reviewing = false;
     try {
-      applySegments(await fetchSegments(summary.job_id));
+      await refreshView();
     } catch (e: unknown) {
       jobError = e instanceof Error ? e.message : 'Could not load the transcript';
     }
@@ -289,13 +313,37 @@
     if ((segmentsData?.engine ?? 'openai') === 'openai' && !apiKey) {
       throw new Error('Enter your OpenAI API key (Profile) to translate.');
     }
-    applySegments(await translateJob(currentJob.job_id, language, apiKey || null));
+    const added = await translateJob(currentJob.job_id, language, apiKey || null);
+    viewLanguage = added.language && added.language !== 'original' ? added.language : language; // show what was just added
+    await refreshView();
+  }
+
+  async function handleSelect(choice: { language?: string; diarization?: string }) {
+    if (!currentJob) return;
+    if (choice.language) viewLanguage = choice.language;
+    // The viewed speaker version is also the active one, so the speaker review and clips always edit what is shown.
+    if (choice.diarization) await setActiveDiarization(currentJob.job_id, choice.diarization);
+    await refreshView();
+  }
+
+  async function handleRediarize(numSpeakers: number | null) {
+    if (!currentJob) return;
+    await rediarize(currentJob.job_id, numSpeakers);
+    await refreshView();
+  }
+
+  async function handleDeleteVersion(kind: 'translation' | 'diarization', id: string) {
+    if (!currentJob) return;
+    if (kind === 'translation') await deleteTranslation(currentJob.job_id, id);
+    else await deleteDiarization(currentJob.job_id, id);
+    await refreshView();
   }
 
   function handleReset() {
     currentJob = null;
     transcript = [];
     segmentsData = null;
+    versions = null;
     reviewing = false;
   }
 
@@ -352,7 +400,7 @@
                 <SpeakerReview
                   jobId={currentJob.job_id}
                   data={segmentsData}
-                  onupdate={applySegments}
+                  onupdate={() => refreshView()}
                   onclose={() => (reviewing = false)}
                 />
               {:else if transcript.length > 0}
@@ -363,6 +411,12 @@
                   onreview={segmentsData ? () => (reviewing = true) : undefined}
                   ontranslate={segmentsData ? handleTranslate : undefined}
                   translatedTo={segmentsData?.translated_to ?? null}
+                  {versions}
+                  language={viewLanguage}
+                  diarization={segmentsData?.diarization ?? null}
+                  onselect={handleSelect}
+                  onrediarize={segmentsData ? handleRediarize : undefined}
+                  ondelete={handleDeleteVersion}
                 />
               {/if}
             </div>

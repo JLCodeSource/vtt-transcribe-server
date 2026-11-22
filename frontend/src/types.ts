@@ -113,9 +113,39 @@ export interface SegmentView {
   speaker: string | null;
 }
 
+/** What exists for a job: the original, every translation, every diarization. */
+export interface DiarizationVersion {
+  id: string;
+  label: string;
+  num_speakers: number | null;
+  method?: string;
+  created_at?: string;
+  speakers: number;
+  active: boolean;
+}
+
+export interface TranslationVersion {
+  language: string;
+  engine?: string | null;
+  source?: string | null;
+  created_at?: string;
+}
+
+export interface VersionsResponse {
+  job_id: string;
+  original: { language: string | null; segments: number };
+  translations: TranslationVersion[];
+  diarizations: DiarizationVersion[];
+  active_diarization: string | null;
+}
+
 export interface SegmentsResponse {
   job_id: string;
   translated_to: string | null;
+  /** the language shown ("original" or a translation) and the diarization version it was built with */
+  language?: string;
+  diarization?: string | null;
+  active_diarization?: string | null;
   /** the engine the job ran with; local jobs translate on the server and need no API key */
   engine?: string;
   speakers: SpeakerInfo[];
@@ -126,6 +156,10 @@ export interface EnginesResponse {
   engines: Array<{ id: string; label: string; requires_api_key: boolean; available: boolean }>;
   diarizers: string[];
   max_speakers: number;
+  /** language names the translator understands (from the core translation model) */
+  languages?: string[];
+  /** largest accepted upload in bytes (the server's MAX_UPLOAD_SIZE) */
+  max_upload_bytes?: number;
 }
 
 export interface Me {

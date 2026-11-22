@@ -12,7 +12,7 @@ from typing import Any
 
 from sqlalchemy import delete, select
 
-from vtt_server import retention
+from vtt_server import retention, versions
 from vtt_server.models import TranscriptionJob
 
 logger = logging.getLogger(__name__)
@@ -20,8 +20,11 @@ logger = logging.getLogger(__name__)
 # Options and results live in JSON columns; everything else has its own column.
 OPTION_KEYS = ("engine", "diarize", "num_speakers", "translate_to", "diarize_only", "file_size")
 STATE_KEYS = (
-    "result", "raw_transcript", "segments", "speaker_names", "audio_path", "detected_language", "translated_to", "message",
+    "result", "raw_transcript", "segments", "audio_path", "detected_language", "translated_to", "message",
+    "translations", "diarizations", "active_diarization", "dia_seq", "schema",
 )  # fmt: skip
+# "speaker_names" (and per-segment speaker/translation) belong to the pre-versions layout: read for migration only.
+LEGACY_STATE_KEYS = ("speaker_names",)
 TIME_KEYS = ("created_at", "started_at", "completed_at", "expires_at", "downloaded_at")
 
 
@@ -78,7 +81,18 @@ class JobStore:
             async with factory() as db:
                 query = select(TranscriptionJob).order_by(TranscriptionJob.created_at, TranscriptionJob.id)
                 rows = (await db.execute(query)).scalars().all()
-                return [_from_row(r) for r in rows]
+                loaded = []
+                upgraded = 0
+                for row in rows:
+                    job = _from_row(row)
+                    if versions.migrate(job):  # earlier layout: keep everything, now as versions (see versions.migrate)
+                        _to_row(job, row)
+                        upgraded += 1
+                    loaded.append(job)
+                if upgraded:
+                    await db.commit()
+                    logger.info("Migrated %d job(s) to the versions layout", upgraded)
+                return loaded
         except Exception:
             logger.exception("Could not load persisted jobs")
             return []
@@ -110,7 +124,7 @@ def _to_row(job: dict[str, Any], row: TranscriptionJob) -> None:
         if parsed is not None or key != "created_at":
             setattr(row, key, parsed)
     row.options = json.dumps({k: job[k] for k in OPTION_KEYS if k in job})
-    row.state = json.dumps({k: job[k] for k in STATE_KEYS if k in job}, ensure_ascii=False)
+    row.state = json.dumps({k: job[k] for k in STATE_KEYS if k in job}, ensure_ascii=False, default=list)
 
 
 def _from_row(row: TranscriptionJob) -> dict[str, Any]:

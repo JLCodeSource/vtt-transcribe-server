@@ -100,3 +100,75 @@ describe('uploading several files at once', () => {
     expect([...list.querySelectorAll('h4')].map((h) => h.textContent)).toEqual(['two.mp3', 'three.mp3']);
   });
 });
+
+describe('a saved default engine this server does not have', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('falls back to an engine that works', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/profile') return ok({ ...profile, default_options: { engine: 'local' } });
+        if (url === '/api/engines') {
+          return ok({
+            engines: [
+              { id: 'openai', label: 'OpenAI', requires_api_key: true, available: true },
+              { id: 'local', label: 'Local', requires_api_key: false, available: false },
+            ],
+            max_speakers: 12,
+          });
+        }
+        return ok({});
+      }),
+    );
+    const { container } = render(FileUpload, { props: { onuploadstart: () => {} } });
+    const input = container.querySelector('#file-input') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [audio('a.mp3')], configurable: true });
+    await fireEvent.change(input);
+    const select = (await screen.findByLabelText('Engine')) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('openai'));
+  });
+});
+
+describe('the upload size limit', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const stub = (maxBytes?: number) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/profile') return ok(profile);
+        if (url === '/api/engines') {
+          return ok({ engines: [{ id: 'openai', label: 'OpenAI', requires_api_key: true, available: true }], max_speakers: 12, max_upload_bytes: maxBytes });
+        }
+        return ok({});
+      }),
+    );
+  const pick = async (container: HTMLElement, file: File) => {
+    const input = container.querySelector('#file-input') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    await fireEvent.change(input);
+  };
+  const big = (name: string, bytes: number) => {
+    const f = new File(['x'], name, { type: 'audio/mpeg', lastModified: 1 });
+    Object.defineProperty(f, 'size', { value: bytes });
+    return f;
+  };
+
+  it('accepts a multi-gigabyte video by default', async () => {
+    stub();
+    const { container } = render(FileUpload, { props: { onuploadstart: () => {} } });
+    await pick(container, big('film.mp4', 3 * 1024 ** 3));
+    expect(await screen.findByRole('list', { name: 'Selected files' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('uses the limit the server reports and says what it is', async () => {
+    stub(50 * 1024 * 1024);
+    const { container } = render(FileUpload, { props: { onuploadstart: () => {} } });
+    await waitFor(() => expect((fetch as ReturnType<typeof vi.fn>).mock.calls.some((c) => c[0] === '/api/engines')).toBe(true));
+    await new Promise((r) => setTimeout(r, 20));
+    await pick(container, big('long.mp4', 80 * 1024 * 1024));
+    expect((await screen.findByRole('alert')).textContent).toContain('Maximum: 50 MB');
+  });
+});

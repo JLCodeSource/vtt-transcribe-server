@@ -23,6 +23,20 @@ export const test = base.extend({
       });
     });
 
+    // The profile page and the upload form read /api/profile; the stand-in session has no real account behind it.
+    await page.route('**/api/profile', async (route) => {
+      if (route.request().method() !== 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          username: 'testuser', email: 'test@example.com', oauth_provider: null, retention_mode: 'default', retention_days: null,
+          effective_retention: { mode: 'hold', days: 7 }, platform_retention: { mode: 'hold', days: 7 }, notify_job_ready: true,
+          email_enabled: false, default_options: {}, has_openai_key: false, openai_key_hint: null,
+        }),
+      });
+    });
+
     await page.addInitScript(() => {
       window.localStorage.setItem('access_token', 'e2e-test-token');
       window.localStorage.setItem('username', 'testuser');

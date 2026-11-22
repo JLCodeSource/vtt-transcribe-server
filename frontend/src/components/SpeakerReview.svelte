@@ -71,7 +71,7 @@
   }
 
   const redo = () =>
-    run(() => rediarize(jobId, speakerCount ? Number(speakerCount) : null), 'Re-ran speaker detection (names reset).');
+    run(() => rediarize(jobId, speakerCount ? Number(speakerCount) : null), 'Added a new speaker version with the re-run. The other versions are kept; switch between them in the transcript view.');
 </script>
 
 <section class="review" aria-label="Review speakers">
@@ -79,7 +79,7 @@
   <p class="hint">
     Found {data.speakers.length}
     {data.speakers.length === 1 ? 'speaker' : 'speakers'}. Listen to a sample, name each speaker, merge voices that are
-    the same person, or split off lines that belong to someone else.
+    the same person, or split off lines that belong to someone else. These edits change only the speaker version you are looking at.
   </p>
   {#if note}<p class="note" role="status">{note}</p>{/if}
 
@@ -137,7 +137,7 @@
 
   <div class="row redo">
     <label>
-      Wrong number of speakers?
+      Wrong number of speakers? Re-run (adds a version)
       <select bind:value={speakerCount} aria-label="Number of speakers" disabled={busy}>
         <option value="">Auto-detect</option>
         {#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}<option value={String(n)}>{n}</option>{/each}

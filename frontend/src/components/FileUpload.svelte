@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { authHeaders, fetchEngines, fetchProfile } from '../api';
-  import { languageChoices } from '../languages';
+  import { languageChoices, loadLanguages, TRANSLATION_LANGUAGES } from '../languages';
   import type { UploadOptions, TranscriptionJob, EnginesResponse } from '../types';
 
   interface Props {
@@ -9,6 +9,9 @@
   }
 
   const { onuploadstart }: Props = $props();
+
+  let languages: string[] = $state(TRANSLATION_LANGUAGES);
+  loadLanguages().then((l) => (languages = l));
 
   let isDragging = $state(false);
   // Several files can be chosen or dropped at once; each becomes its own job and waits its turn in the queue.
@@ -30,6 +33,14 @@
     { id: 'openai', label: 'OpenAI Whisper (API)', requires_api_key: true, available: true },
     { id: 'local', label: 'Local Whisper (no key)', requires_api_key: false, available: false },
   ]);
+  // A saved default (or the initial choice) can name an engine this server does not have: use one that works instead.
+  $effect(() => {
+    const chosen = engines.find((e) => e.id === options.engine);
+    if (chosen && !chosen.available) {
+      const fallback = engines.find((e) => e.available);
+      if (fallback) options.engine = fallback.id as UploadOptions['engine'];
+    }
+  });
   const needsKey = $derived((engines.find((e) => e.id === options.engine)?.requires_api_key ?? true) && !profileHasKey);
   let isUploading = $state(false);
 
@@ -46,7 +57,10 @@
         /* the profile is an optional convenience */
       });
     fetchEngines()
-      .then((r) => (engines = r.engines))
+      .then((r) => {
+        engines = r.engines;
+        if (r.max_upload_bytes) maxFileSize = r.max_upload_bytes;
+      })
       .catch(() => {
         /* keep the defaults: the server is the source of truth only when reachable */
       });
@@ -66,7 +80,9 @@
 
   const SUPPORTED_VIDEO_TYPES = ['.mp4', '.avi', '.mov', '.webm', '.mpeg'];
   const SUPPORTED_AUDIO_TYPES = ['.mp3', '.wav', '.ogg', '.m4a', '.mpga'];
-  const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+  // The server's MAX_UPLOAD_SIZE arrives with the engine list; until then assume its default.
+  let maxFileSize = $state(4 * 1024 ** 3);
+  const limitLabel = (bytes: number) => (bytes >= 1024 ** 3 ? `${+(bytes / 1024 ** 3).toFixed(1)} GB` : `${Math.round(bytes / 1024 / 1024)} MB`);
 
   function validateFile(file: File): string | null {
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
@@ -76,8 +92,8 @@
       return `Unsupported file type: ${ext}. Supported types: ${allSupported.join(', ')}`;
     }
     
-    if (file.size > MAX_FILE_SIZE) {
-      return `File too large: ${(file.size / 1024 / 1024).toFixed(2)}MB. Maximum: 100MB`;
+    if (file.size > maxFileSize) {
+      return `File too large: ${sizeLabel(file.size)}. Maximum: ${limitLabel(maxFileSize)}`;
     }
     
     return null;
@@ -332,7 +348,7 @@
           <span>Translate to (optional)</span>
           <select bind:value={options.translateTo} disabled={isUploading} aria-label="Translate to">
             <option value="">No translation</option>
-            {#each languageChoices(options.translateTo ?? '') as l (l)}<option value={l}>{l}</option>{/each}
+            {#each languageChoices(languages, options.translateTo ?? '') as l (l)}<option value={l}>{l}</option>{/each}
           </select>
           <span class="help">Needs an OpenAI API key (unless you use the local engine)</span>
         </label>

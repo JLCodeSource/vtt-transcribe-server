@@ -16,6 +16,7 @@ os.environ.setdefault("VTT_LOGIN_RATE_LIMIT", "0")
 os.environ.setdefault("VTT_REGISTER_RATE_LIMIT", "0")
 os.environ.setdefault("VTT_MAX_ACTIVE_JOBS_PER_USER", "0")  # job capacity has its own tests
 os.environ.setdefault("VTT_MAX_ACTIVE_JOBS", "0")
+os.environ.setdefault("VTT_STATIC_DIR", "")  # a locally built UI in vtt_server/static must not change the API tests
 os.environ.setdefault("ENCRYPTION_KEY", "eZG7WcaEfouAvUvzsF8dpS1Arw-lfhjCs5LU4gzuXVE=")
 
 # Load .env file at module import time (before pytest collection)
@@ -37,6 +38,34 @@ def _no_job_persistence():
     yield
     store.enabled = True
     store.session_factory = None
+
+
+@pytest.fixture
+def inline_queue(monkeypatch):
+    """Run queued jobs to completion, in order, as soon as they are submitted (deterministic, no background task).
+
+    A plain ``TestClient(app)`` opens a fresh event loop for every request and closes it afterwards, so the real worker
+    task, which lives on the loop of the request that started it, is cancelled whenever it has not finished by then.
+    Tests that submit a job and then read its result use this instead of polling for a task that may have been dropped.
+    """
+    import asyncio
+    import threading
+
+    from vtt_server import jobqueue
+
+    def drain(self):  # noqa: ARG001
+        def work():
+            async def run_all():
+                while queued := jobqueue.waiting(jobqueue.queue._jobs()):  # noqa: SLF001
+                    await jobqueue.queue.process(queued[0])
+
+            asyncio.run(run_all())
+
+        thread = threading.Thread(target=work)
+        thread.start()
+        thread.join()
+
+    monkeypatch.setattr(jobqueue.JobQueue, "ensure_running", drain)
 
 
 @pytest.fixture(scope="session", autouse=True)

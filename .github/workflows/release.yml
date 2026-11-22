@@ -1,0 +1,257 @@
+name: Release
+
+# Publishes a release: PyPI package (via TestPyPI first), Docker images on GHCR, and a GitHub release.
+# Triggered only by pushing a version tag (v0.1.0) or by hand. A manual run is a dry run unless you untick dry_run:
+# it builds and tests everything but publishes nothing.
+#
+# One-time setup (repository owner):
+#   - environments `testpypi` and `pypi` (Settings > Environments), with required reviewers
+#   - a PyPI / TestPyPI "pending publisher" for project vtt-transcribe-server:
+#     owner JLCodeSource, repository vtt-transcribe-server, workflow release.yml, environment testpypi / pypi
+#   No tokens or secrets are used: publishing uses OpenID Connect (trusted publishing).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and test only; publish nothing'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/jlcodesource/vtt-transcribe-server
+
+jobs:
+  build:
+    name: Build and test the package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.mode.outputs.publish }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Decide whether this run publishes
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ "$EVENT" = "push" ] || [ "$DRY_RUN" = "false" ]; then publish=true; else publish=false; fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      - name: Read the package version and check it against the tag
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version=$(uv run --no-project python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "package version: $version"
+          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "v$version" ]; then
+            echo "::error::tag $REF_NAME does not match pyproject.toml version $version"
+            exit 1
+          fi
+          uv run --no-project python scripts/release_notes.py "$version" > /dev/null
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the web UI into the package
+        run: sh scripts/build_ui.sh
+
+      - name: Run the backend tests
+        run: |
+          uv sync --frozen
+          uv run ruff check .
+          uv run pytest -q -p no:cacheprovider
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Check the distribution metadata
+        run: uvx twine check --strict dist/*
+
+      - name: Smoke test the wheel in a clean environment
+        run: |
+          python3 -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --quiet dist/*.whl
+          cd "$(mktemp -d)"
+          /tmp/smoke/bin/vtt-server --version
+          /tmp/smoke/bin/vtt-server --help > /dev/null
+          /tmp/smoke/bin/vtt-server init
+          /tmp/smoke/bin/vtt-server --port 8123 > server.log 2>&1 &
+          for _ in $(seq 1 40); do
+            if curl -fs http://127.0.0.1:8123/health; then echo; break; fi
+            sleep 2
+          done
+          curl -fs http://127.0.0.1:8123/health
+          curl -fs http://127.0.0.1:8123/ | grep -qi '<div id="app">'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8123/api/engines)" = "401"
+          kill %1 || true
+
+      - name: Upload the distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/vtt-transcribe-server/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download the distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [build, publish-testpypi]
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/vtt-transcribe-server/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download the distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  docker:
+    name: Docker image (${{ matrix.variant }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: lean
+            sync_args: ''
+            suffix: ''
+          - variant: local
+            sync_args: '--extra local'
+            suffix: '-local'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: needs.build.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags
+        id: tags
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          SUFFIX: ${{ matrix.suffix }}
+        run: |
+          if [ -n "$SUFFIX" ]; then latest="local"; else latest="latest"; fi
+          {
+            echo 'list<<EOF'
+            echo "$IMAGE:$VERSION$SUFFIX"
+            echo "$IMAGE:$latest"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and (when publishing) push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: api-ui
+          platforms: linux/amd64
+          build-args: |
+            SYNC_ARGS=${{ matrix.sync_args }}
+          push: ${{ needs.build.outputs.publish == 'true' }}
+          tags: ${{ steps.tags.outputs.list }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.build.outputs.version }}
+            org.opencontainers.image.licenses=BSD-3-Clause
+          cache-from: type=gha,scope=release-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.variant }}
+
+  github-release:
+    name: GitHub release
+    needs: [build, publish-pypi, docker]
+    if: needs.build.outputs.publish == 'true' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Release notes from the changelog
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: python3 scripts/release_notes.py "$VERSION" > notes.md
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/* --title "$TAG" --notes-file notes.md --verify-tag

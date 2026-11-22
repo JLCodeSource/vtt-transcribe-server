@@ -2,13 +2,13 @@
 
 import asyncio
 import io
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from vtt_transcribe import speakers
 
+from vtt_server import versions
 from vtt_server.routes.transcription import _process_transcription, jobs
 
 TRANSCRIPT = (
@@ -35,10 +35,8 @@ def job():
     job_id = "spk-job"
     segs = speakers.parse_transcript(TRANSCRIPT)
     jobs[job_id] = {"job_id": job_id, "status": "completed", "filename": "a.mp3", "diarize": True}
-    jobs[job_id]["speaker_names"] = {}
-    from vtt_server.routes.transcription import set_segments
-
-    set_segments(jobs[job_id], segs)
+    versions.set_original(jobs[job_id], segs)
+    versions.add_diarization(jobs[job_id], [], None, labels=[s["speaker"] for s in segs])
     yield job_id
     jobs.pop(job_id, None)
 
@@ -153,7 +151,7 @@ class TestSpeakerEndpoints:
 
 
 class TestPipeline:
-    def test_transcribe_with_sherpa_diarization_needs_no_token(self, client):
+    def test_transcribe_with_sherpa_diarization_needs_no_token(self, client, inline_queue):
         with (
             patch("vtt_server.routes.transcription.VideoTranscriber") as vt,
             patch(
@@ -169,11 +167,7 @@ class TestPipeline:
             )
             assert r.status_code == 200
             job_id = r.json()["job_id"]
-            for _ in range(100):  # the job runs as a background task; wait for it instead of racing it
-                seg = client.get(f"/api/jobs/{job_id}/speakers")
-                if seg.status_code != 409:
-                    break
-                time.sleep(0.05)
+            seg = client.get(f"/api/jobs/{job_id}/speakers")  # the queue ran the job before the submit returned
         assert seg.status_code == 200
         assert [s["id"] for s in seg.json()["speakers"]] == ["SPEAKER_00", "SPEAKER_01"]
         assert dia.call_args.args[1] == 2
@@ -189,7 +183,9 @@ class TestPipeline:
             vt.return_value.transcribe.return_value = "[00:00:00 - 00:00:10] hello"
             asyncio.run(_process_transcription("p1", b"x", "a.mp3", "k", True))
         assert jobs["p1"]["status"] == "completed"
-        assert jobs["p1"]["segments"][0]["speaker"] == "SPEAKER_00"
+        assert "speaker" not in jobs["p1"]["segments"][0]  # the original text is stored without any speaker
+        assert jobs["p1"]["diarizations"][0]["labels"] == ["SPEAKER_00"]
+        assert jobs["p1"]["diarizations"][0]["turns"] == [[0, 10, "SPEAKER_00"]]  # the raw turns are kept
         assert jobs["p1"]["result"] == "[00:00:00 - 00:00:10] Speaker 1: hello"
         from vtt_server.routes.transcription import purge_job
 
@@ -216,6 +212,19 @@ class TestEngineSeam:
         assert ids["local"]["available"] is False  # the test env does not install the 'local' extra
         assert "diarizers" not in data
 
+    def test_engines_listing_carries_the_translation_languages(self, client):
+        languages = client.get("/api/engines").json()["languages"]
+        assert "Spanish" in languages
+        assert "Japanese" in languages
+        assert languages == sorted(languages)
+        assert len(languages) == len(set(languages))
+
+    def test_translation_languages_fall_back_when_core_table_is_unavailable(self):
+        from vtt_server import engines
+
+        with patch.dict("sys.modules", {"vtt_transcribe.local_translate": None}):
+            assert engines.translation_languages() == engines.DEFAULT_LANGUAGES
+
     def test_engines_listing_reports_local_when_installed(self, client):
         with patch("vtt_server.engines.local_engine_available", return_value=True):
             ids = {e["id"]: e for e in client.get("/api/engines").json()["engines"]}
@@ -230,7 +239,7 @@ class TestEngineSeam:
         assert r.status_code == 501
         assert "local" in r.json()["detail"]
 
-    def test_local_engine_runs_without_a_key(self, client):
+    def test_local_engine_runs_without_a_key(self, client, inline_queue):
         with (
             patch("vtt_server.engines.local_engine_available", return_value=True),
             patch("vtt_server.routes.transcription.make_local_transcriber") as lt,
@@ -242,11 +251,7 @@ class TestEngineSeam:
             )
             assert r.status_code == 200
             job_id = r.json()["job_id"]
-            for _ in range(100):
-                got = client.get(f"/api/jobs/{job_id}/segments")
-                if got.status_code != 409:
-                    break
-                time.sleep(0.05)
+            got = client.get(f"/api/jobs/{job_id}/segments")
         assert got.status_code == 200
         assert got.json()["segments"][0]["text"] == "hello"
         client.delete(f"/api/jobs/{job_id}")

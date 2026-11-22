@@ -195,7 +195,7 @@ class TestAPITranscriptionCoverage:
         """Test /diarize endpoint async processing path (lines 126-138)."""
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
 
         client = TestClient(app)
 
@@ -218,7 +218,7 @@ class TestAPITranscriptionCoverage:
         """
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
 
         client = TestClient(app)
 
@@ -239,7 +239,7 @@ class TestAPITranscriptionCoverage:
         """Test exception handling in _process_diarization (lines 126-138)."""
         from fastapi.testclient import TestClient
 
-        from vtt_server import app
+        from vtt_server.app import app
 
         client = TestClient(app)
 
@@ -465,7 +465,8 @@ class TestTranscribeWithTranslation:
 
             # Verify translation was called and result includes translation
             assert jobs[job_id]["status"] == "completed"
-            assert "Texto español" in jobs[job_id]["result"]
+            assert "English text" in jobs[job_id]["result"]  # the original is kept as the result...
+            assert jobs[job_id]["translations"]["Spanish"]["texts"] == ["Texto español"]  # ...and the translation added
             mock_at_instance.translate_transcript.assert_called_once()
 
 
@@ -500,10 +501,10 @@ class TestDetectLanguageErrorHandling:
         assert response.status_code == 400
         assert "Unsupported file type" in response.json()["detail"]
 
-    def test_detect_language_file_too_large(self, client):
+    def test_detect_language_file_too_large(self, client, monkeypatch):
         """Test detect_language with file exceeding size limit."""
-        # Create a file larger than MAX_FILE_SIZE (100MB)
-        large_content = b"x" * (101 * 1024 * 1024)
+        monkeypatch.setattr("vtt_server.routes.transcription.MAX_FILE_SIZE", 1024)
+        large_content = b"x" * (2 * 1024 * 1024)
         files = {"file": ("test.mp3", io.BytesIO(large_content), "audio/mpeg")}
         data = {"api_key": "test-api-key"}
         response = client.post("/api/detect-language", files=files, data=data)
