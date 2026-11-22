@@ -24,6 +24,18 @@ if env_path.exists():
     load_dotenv(env_path, override=False)  # Don't override test values
 
 
+@pytest.fixture(autouse=True)
+def _no_job_persistence():
+    """Job persistence and the queue worker are covered by their own tests; keep other tests off the real database."""
+    from vtt_server.jobstore import store
+
+    store.enabled = False
+    store.session_factory = None
+    yield
+    store.enabled = True
+    store.session_factory = None
+
+
 @pytest.fixture(scope="session", autouse=True)
 def load_env() -> None:
     """Ensure environment variables are loaded from .env file."""

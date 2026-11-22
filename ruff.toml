@@ -105,3 +105,6 @@ max-complexity = 10
 # Scripts don't need __init__.py
 "scripts/*.py" = ["INP001"]
 
+# Fixture-driven tests: fixtures requested for their side effects, compact asserts
+"tests/test_api/test_queue.py" = ["ARG001", "PT018", "EM101", "PYI034", "RUF059", "E501", "PLR2004"]
+"tests/test_api/test_profile.py" = ["ARG001", "PT018", "EM101", "PYI034", "RUF059", "E501", "PLR2004"]

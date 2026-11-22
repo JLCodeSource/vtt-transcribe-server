@@ -152,3 +152,21 @@ async def get_user_api_key(user_id: int, service: str, db: AsyncSession) -> str 
     await db.flush()
 
     return decrypt_key(key.encrypted_key)
+
+
+async def lookup_user_key(user_id: int, service: str) -> str | None:
+    """A user's stored key for ``service`` using the job store's session (worker / background use). Never raises."""
+    from vtt_server.jobstore import store
+
+    factory = store.factory()
+    if factory is None:
+        return None
+    try:
+        async with factory() as db:
+            result = await db.execute(
+                select(APIKey).where(APIKey.user_id == user_id, APIKey.service == service).order_by(APIKey.created_at.desc())
+            )
+            key = result.scalars().first()
+            return decrypt_key(key.encrypted_key) if key else None
+    except Exception:
+        return None

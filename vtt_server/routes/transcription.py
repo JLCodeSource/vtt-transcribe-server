@@ -14,12 +14,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 from vtt_transcribe import speakers
 from vtt_transcribe.logging_config import get_logger
 from vtt_transcribe.transcriber import VideoTranscriber
 from vtt_transcribe.translator import AudioTranslator
 
-from vtt_server.access import check_capacity, owned_job
+from vtt_server import mailer, retention
+from vtt_server.access import check_capacity, owned_job, public_view
 from vtt_server.auth import get_current_active_user
 from vtt_server.engines import (
     EngineUnavailableError,
@@ -29,6 +31,9 @@ from vtt_server.engines import (
     make_local_translate_fn,
     validate_engine,
 )
+from vtt_server.jobqueue import JobCancelled, checkpoint, next_seq, queue, set_step, with_progress
+from vtt_server.jobqueue import queue as job_queue  # noqa: F401
+from vtt_server.jobstore import store
 from vtt_server.models import User
 
 # Every /api route needs a signed-in, active user; job routes additionally require owning the job (see access.owned_job).
@@ -101,10 +106,54 @@ def _save_audio(job_id: str, content: bytes, filename: str) -> Path:
     return path
 
 
+def _audio_for(job: dict[str, Any], content: bytes | None, filename: str) -> Path:
+    """The job's audio: save the upload when given (direct calls), else use what the queue stored at submission."""
+    return _save_audio(job["job_id"], content, filename) if content is not None else Path(job["audio_path"])
+
+
 def purge_job(job_id: str) -> None:
-    """Forget a job and delete its stored audio."""
+    """Forget a job in memory and delete its stored audio and files."""
     jobs.pop(job_id, None)
     shutil.rmtree(_job_dir(job_id), ignore_errors=True)
+
+
+def purge_user_jobs(user_id: int) -> None:
+    """Forget all of a user's jobs in memory and on disk (account deletion). Running jobs are told to stop."""
+    for job_id, job in list(jobs.items()):
+        if job.get("user_id") == user_id:
+            job["cancel_requested"] = True
+            purge_job(job_id)
+
+
+async def remove_job(job_id: str) -> None:
+    """Delete a job everywhere: memory, audio on disk, and its database row."""
+    await asyncio.to_thread(purge_job, job_id)
+    await store.remove(job_id)
+
+
+async def persist(job_id: str) -> None:
+    """Write a job's current state through to the database (best effort)."""
+    job = jobs.get(job_id)
+    if job is not None:  # a job deleted meanwhile must not be written back
+        await store.save(job)
+
+
+def _now_iso() -> str:
+    return retention.utcnow().isoformat()
+
+
+async def resolve_openai_key(user_id: int | None, explicit: str | None) -> str | None:
+    """The request's key if given, else the user's stored OpenAI key (profile), else ``None``."""
+    if explicit or user_id is None:
+        return explicit
+    from vtt_server.routes.api_keys import lookup_user_key
+
+    return await lookup_user_key(user_id, "openai")
+
+
+async def sweep_expired(now: Any = None) -> list[str]:
+    """Delete every job whose retention has run out (called by the background sweeper)."""
+    return await retention.sweep(jobs, remove_job, now)
 
 
 def _check_engine(engine: str, api_key: str | None) -> None:
@@ -127,6 +176,53 @@ async def list_engines() -> dict[str, Any]:
     return {"engines": engine_info(), "max_speakers": MAX_SPEAKERS}
 
 
+def _retention_for(user: User, mode: str | None, days: int | None) -> dict[str, Any]:
+    try:
+        return retention.resolve(mode, days, user.retention_mode, user.retention_days)
+    except retention.RetentionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    """Validate type and size of an upload and return its bytes."""
+    file_ext = Path(file.filename or "").suffix.lower()
+    if file_ext not in SUPPORTED_EXTENSIONS:
+        logger.warning("Job creation failed: unsupported file type", extra={"file_name": file.filename, "extension": file_ext})
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {file_ext}. Supported types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
+        )
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        max_mb = MAX_FILE_SIZE // (1024 * 1024)
+        logger.warning("Job creation failed: file too large", extra={"file_name": file.filename, "size": len(content)})
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large: {len(content)} bytes. Maximum size: {MAX_FILE_SIZE} bytes ({max_mb}MB)",
+        )
+    return content
+
+
+async def _enqueue(job: dict[str, Any], content: bytes, filename: str) -> dict[str, str]:
+    """Store the upload, record the job as pending and wake the worker. Nothing runs here: the queue runs jobs one by one."""
+    job_id = job["job_id"]
+    job.update(
+        status="pending",
+        step="queued",
+        progress=0.0,
+        message="Waiting in the queue",
+        created_at=_now_iso(),
+        queue_seq=next_seq(),
+        file_size=len(content),
+        progress_updates=asyncio.Queue(maxsize=MAX_PROGRESS_QUEUE_SIZE),  # live events for the job's websocket
+    )
+    jobs[job_id] = job
+    await asyncio.to_thread(_save_audio, job_id, content, filename)
+    await store.save(job)
+    queue.ensure_running()
+    return {"job_id": job_id, "status": "pending", "message": "Job queued"}
+
+
 @router.post("/transcribe")
 async def create_transcription_job(
     file: UploadFile = File(...),
@@ -135,113 +231,113 @@ async def create_transcription_job(
     translate_to: str | None = Form(None),
     engine: str = Form("openai"),
     num_speakers: int | None = Form(None),
+    retention_mode: str | None = Form(None, description="keep | delete | hold (default: your profile, then the platform)"),
+    retention_days: int | None = Form(None, description="days to hold when retention_mode=hold"),
     user: User = Depends(get_current_active_user),
 ) -> dict[str, str]:
-    """Create a new transcription job.
+    """Queue a transcription job (it runs after the jobs ahead of it; see ``GET /api/jobs``).
 
     Args:
         file: Audio or video file
-        api_key: OpenAI API key (required for ``engine=openai``)
+        api_key: OpenAI API key for ``engine=openai``; when omitted the key saved in the user's profile is used
         diarize: Enable speaker diarization
         translate_to: Optional target language for translation (e.g., "Spanish", "French")
-        engine: ``openai`` or ``local`` (local is a stub until core ships it; returns 501)
+        engine: ``openai`` or ``local``
         num_speakers: Known speaker count; detected automatically when omitted
+        retention_mode / retention_days: how long to keep the result (see :mod:`vtt_server.retention`)
 
     Returns:
         Job ID and status
     """
-    logger.info(
-        "Creating transcription job",
-        extra={"file_name": file.filename, "diarize": diarize, "engine": engine},
-    )
+    logger.info("Creating transcription job", extra={"file_name": file.filename, "diarize": diarize, "engine": engine})
 
     if not file.filename:
         logger.warning("Job creation failed: missing filename")
         raise HTTPException(status_code=422, detail="File must have a filename")
 
     check_capacity(user)
-    _check_engine(engine, api_key)
+    stored_key = await resolve_openai_key(user.id, api_key) if engine == "openai" else api_key
+    _check_engine(engine, stored_key)
     validate_num_speakers(num_speakers)
+    policy = _retention_for(user, retention_mode, retention_days)
+    content = await _read_upload(file)
 
-    # Validate file extension
-    file_ext = Path(file.filename).suffix.lower()
-    if file_ext not in SUPPORTED_EXTENSIONS:
-        logger.warning(
-            "Job creation failed: unsupported file type",
-            extra={"file_name": file.filename, "extension": file_ext},
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type: {file_ext}. Supported types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
-        )
-
-    # Read and validate file size
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        max_mb = MAX_FILE_SIZE // (1024 * 1024)
-        logger.warning(
-            "Job creation failed: file too large",
-            extra={"file_name": file.filename, "file_size_bytes": len(content), "max_size_bytes": MAX_FILE_SIZE},
-        )
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large: {len(content)} bytes. Maximum size: {MAX_FILE_SIZE} bytes ({max_mb}MB)",
-        )
-
-    job_id = str(uuid.uuid4())
-
-    logger.info(
-        "Transcription job created successfully",
-        extra={"job_id": job_id, "file_name": file.filename, "file_size_mb": round(len(content) / (1024 * 1024), 2)},
-    )
-
-    jobs[job_id] = {
-        "job_id": job_id,
+    job: dict[str, Any] = {
+        "job_id": str(uuid.uuid4()),
         "user_id": user.id,
-        "status": "pending",
         "filename": file.filename,
-        "file_size": len(content),
         "engine": engine,
         "diarize": diarize,
         "num_speakers": num_speakers if diarize else None,
         "translate_to": translate_to,
-        # Bounded queue for progress updates
-        "progress_updates": asyncio.Queue(maxsize=MAX_PROGRESS_QUEUE_SIZE),
+        "retention_mode": policy["mode"],
+        "retention_days": policy["days"],
     }
+    if api_key:  # a key typed into the request is kept (encrypted) only until this job ends
+        from vtt_server.routes.api_keys import encrypt_key
 
-    task = asyncio.create_task(
-        _process_transcription(
-            job_id,
-            content,
-            file.filename or "audio.mp3",
-            api_key,
-            diarize,
-            translate_to,
-            engine=engine,
-            num_speakers=num_speakers,
-        )
-    )
-    _ = task
+        job["secret"] = encrypt_key(api_key)
+    logger.info("Transcription job queued", extra={"job_id": job["job_id"], "file_name": file.filename})
+    return await _enqueue(job, content, file.filename)
 
+
+@router.get("/jobs")
+async def list_jobs(
+    user: User = Depends(get_current_active_user),
+    all_users: bool = Query(False, alias="all", description="Administrators: include every user's jobs"),  # noqa: FBT001, FBT003
+) -> dict[str, Any]:
+    """The caller's jobs, newest first, with queue position, progress and expiry. Used by the Jobs page."""
+    mine = [j for j in jobs.values() if (user.is_superuser and all_users) or j.get("user_id") == user.id]
+    mine.sort(key=lambda j: j.get("created_at") or "", reverse=True)
     return {
-        "job_id": job_id,
-        "status": "pending",
-        "message": "Transcription job created",
+        "jobs": [public_view(j) for j in mine],
+        "queue_length": sum(1 for j in jobs.values() if j.get("status") == "pending"),
+        "running": queue.current,
     }
+
+
+class RetentionBody(BaseModel):
+    """Change how long a job is kept."""
+
+    mode: str
+    days: int | None = None
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_job(job: dict[str, Any] = Depends(owned_job)) -> dict[str, Any]:
+    """Cancel a waiting job immediately, or ask a running one to stop at its next checkpoint."""
+    if job.get("status") not in {"pending", "processing"}:
+        raise HTTPException(status_code=409, detail=f"Job already {job.get('status')}")
+    queue.cancel(job)
+    await store.save(job)
+    return public_view(job)
+
+
+@router.put("/jobs/{job_id}/retention")
+async def set_job_retention(body: RetentionBody, job: dict[str, Any] = Depends(owned_job)) -> dict[str, Any]:
+    """Change a job's retention (keep / delete / hold N days); ``expires_at`` is recalculated."""
+    try:
+        policy = retention.normalize(body.mode, body.days)
+    except retention.RetentionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    job.update(retention_mode=policy["mode"], retention_days=policy["days"])
+    retention.apply_expiry(job)
+    await store.save(job)
+    return public_view(job)
 
 
 @router.get("/jobs/{job_id}")
 async def get_job_status(job: dict[str, Any] = Depends(owned_job)) -> dict[str, Any]:
     """Get status of a transcription job."""
-    # Exclude non-serialisable / bulky internals; speaker data has its own endpoints
-    hidden = {"progress_updates", "segments", "speaker_names", "audio_path", "raw_transcript", "user_id"}
-    return {k: v for k, v in job.items() if k not in hidden}
+    return public_view(job)
 
 
 @router.delete("/jobs/{job_id}", status_code=204)
 async def delete_job(job: dict[str, Any] = Depends(owned_job)) -> None:
-    """Delete a job and its stored audio."""
-    await asyncio.to_thread(purge_job, job["job_id"])
+    """Delete a job, its results and its stored audio (a running job is cancelled first)."""
+    if job.get("status") == "processing":
+        raise HTTPException(status_code=409, detail="The job is running: cancel it first, then delete it")
+    await remove_job(job["job_id"])
 
 
 @router.post("/detect-language")
@@ -337,13 +433,16 @@ async def translate_transcript(
 async def create_diarization_job(
     file: UploadFile = File(...),
     num_speakers: int | None = Form(None),
+    retention_mode: str | None = Form(None),
+    retention_days: int | None = Form(None),
     user: User = Depends(get_current_active_user),
 ) -> dict[str, str]:
-    """Create a diarization-only job (who speaks when; no transcript, no API key).
+    """Queue a diarization-only job (who speaks when; no transcript, no API key).
 
     Args:
         file: Audio or video file
         num_speakers: Known speaker count; detected automatically when omitted
+        retention_mode / retention_days: how long to keep the result
 
     Returns:
         Job ID and status
@@ -353,36 +452,20 @@ async def create_diarization_job(
 
     check_capacity(user)
     validate_num_speakers(num_speakers)
-    file_ext = Path(file.filename).suffix.lower()
-    if file_ext not in SUPPORTED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type: {file_ext}. Supported types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
-        )
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024 * 1024)}MB")
-
-    job_id = str(uuid.uuid4())
-    jobs[job_id] = {
-        "job_id": job_id,
+    policy = _retention_for(user, retention_mode, retention_days)
+    content = await _read_upload(file)
+    job: dict[str, Any] = {
+        "job_id": str(uuid.uuid4()),
         "user_id": user.id,
-        "status": "pending",
         "filename": file.filename,
         "diarize_only": True,
         "num_speakers": num_speakers,
-        # Bounded queue for progress updates
-        "progress_updates": asyncio.Queue(maxsize=MAX_PROGRESS_QUEUE_SIZE),
+        "retention_mode": policy["mode"],
+        "retention_days": policy["days"],
     }
-
-    task = asyncio.create_task(_process_diarization(job_id, content, file.filename, num_speakers))
-    _ = task
-
-    return {
-        "job_id": job_id,
-        "status": "pending",
-        "message": "Diarization job created",
-    }
+    result = await _enqueue(job, content, file.filename)
+    result["message"] = "Diarization job queued"
+    return result
 
 
 def run_diarizer(audio_path: Path, num_speakers: int | None) -> list[tuple[float, float, str]]:
@@ -399,34 +482,87 @@ def set_segments(job: dict[str, Any], segments: list[dict[str, Any]]) -> None:
     job["result"] = speakers.to_result(speakers.labelled(segments, job["speaker_names"], translated=translated))
 
 
+async def run_job(job: dict[str, Any]) -> None:
+    """Run one queued job to the end (called by the worker, one job at a time)."""
+    job_id = job["job_id"]
+    job.setdefault("progress_updates", asyncio.Queue(maxsize=MAX_PROGRESS_QUEUE_SIZE))
+    job.update(status="processing", step="starting", message="Starting", started_at=_now_iso())
+    await persist(job_id)
+    if job.get("diarize_only"):
+        await _process_diarization(job_id, None, job["filename"], job.get("num_speakers"))
+        return
+    api_key = None
+    if job.get("secret"):
+        from vtt_server.routes.api_keys import decrypt_key
+
+        try:
+            api_key = decrypt_key(job["secret"])
+        except Exception:  # key rotated or corrupt: fall back to the profile key
+            logger.warning("Stored job key unreadable", extra={"job_id": job_id})
+    await _process_transcription(
+        job_id,
+        None,
+        job["filename"],
+        api_key,
+        bool(job.get("diarize")),
+        job.get("translate_to"),
+        engine=job.get("engine") or "openai",
+        num_speakers=job.get("num_speakers"),
+    )
+
+
+async def _finish(job: dict[str, Any], status: str, error: str | None = None) -> None:
+    """Common end of a job: final status, timestamps, expiry, secrets dropped, persisted, owner notified."""
+    job["status"] = status
+    job["step"] = {"completed": "done", "failed": "failed", "cancelled": "cancelled"}[status]
+    if status == "completed":
+        job["progress"] = 1.0
+        job["message"] = "Done"
+    if error is not None:
+        job["error"] = error
+        job["message"] = error
+    job["completed_at"] = _now_iso()
+    job.pop("secret", None)
+    job.pop("cancel_requested", None)
+    retention.apply_expiry(job)
+    await persist(job["job_id"])
+    if status != "cancelled":
+        mailer.notify_job_finished(job)
+
+
 async def _process_diarization(
     job_id: str,
-    content: bytes,
+    content: bytes | None,
     filename: str,
     num_speakers: int | None = None,
 ) -> None:
-    """Process diarization-only job asynchronously."""
+    """Process a diarization-only job: who speaks when."""
+    job = jobs[job_id]
     try:
-        jobs[job_id]["status"] = "processing"
+        job["status"] = "processing"
+        set_step(job, "diarizing", "Identifying speakers")
         _emit_progress(job_id, "Starting diarization", "diarization")
-        audio_path = _save_audio(job_id, content, filename)  # small sync write, as before
+        audio_path = _audio_for(job, content, filename)
 
         _emit_progress(job_id, "Processing audio for speaker segments", "diarization")
         turns = await asyncio.to_thread(run_diarizer, audio_path, num_speakers)
+        checkpoint(job)
 
-        set_segments(jobs[job_id], speakers.turns_to_segments(turns))
-        jobs[job_id]["status"] = "completed"
+        set_segments(job, speakers.turns_to_segments(turns))
         _emit_progress(job_id, "Diarization complete", "diarization")
+        await _finish(job, "completed")
+    except JobCancelled:
+        _emit_progress(job_id, "Cancelled", "error")
+        await _finish(job, "cancelled")
     except Exception as e:
         logger.exception("Diarization job failed", extra={"job_id": job_id})
-        jobs[job_id]["status"] = "failed"
-        jobs[job_id]["error"] = str(e)
         _emit_progress(job_id, f"Diarization failed: {e}", "error")
+        await _finish(job, "failed", str(e))
 
 
 async def _process_transcription(
     job_id: str,
-    content: bytes,
+    content: bytes | None,
     filename: str,
     api_key: str | None,
     diarize: bool = False,  # noqa: FBT001, FBT002
@@ -435,7 +571,11 @@ async def _process_transcription(
     engine: str = "openai",
     num_speakers: int | None = None,
 ) -> None:
-    """Process transcription job asynchronously: transcribe -> (diarize) -> (translate)."""
+    """Process one transcription job: transcribe -> (diarize) -> (translate).
+
+    ``content`` is the upload when called directly; the queue passes ``None`` because the audio is already stored.
+    """
+    job = jobs[job_id]
     start_time = time.time()
     logger.info(
         "Starting transcription job processing",
@@ -443,62 +583,76 @@ async def _process_transcription(
     )
 
     try:
-        jobs[job_id]["status"] = "processing"
+        job["status"] = "processing"
+        set_step(job, "detecting", "Starting transcription")
         _emit_progress(job_id, "Starting transcription", "info")
-        audio_path = _save_audio(job_id, content, filename)  # small sync write, as before
+        audio_path = _audio_for(job, content, filename)
 
+        if engine == "openai" and not api_key:
+            api_key = await resolve_openai_key(job.get("user_id"), None)  # profile key when the request carried none
         transcriber = make_transcriber(engine, api_key)  # openai or local (core's LocalTranscriber)
 
         # Detect language before transcription
+        set_step(job, "detecting", "Detecting language")
         _emit_progress(job_id, "Detecting language", "language")
         detected_language = await asyncio.to_thread(transcriber.detect_language, audio_path)
-        jobs[job_id]["detected_language"] = detected_language
+        job["detected_language"] = detected_language
         _emit_progress(job_id, f"Detected language: {detected_language}", "language")
+        await persist(job_id)
 
-        # Transcribe audio
+        # Transcribe audio (fine-grained progress when the core reports it, step-level otherwise)
+        set_step(job, "transcribing", "Transcribing audio")
         _emit_progress(job_id, "Transcribing audio", "info")
-        result = await asyncio.to_thread(transcriber.transcribe, audio_path)
+        result = await asyncio.to_thread(with_progress(transcriber.transcribe, job, "transcribing"), audio_path)
+        checkpoint(job)
         _emit_progress(job_id, "Transcription complete", "info")
-        jobs[job_id]["raw_transcript"] = result
+        job["raw_transcript"] = result
 
         if diarize:
+            set_step(job, "diarizing", "Identifying speakers")
             _emit_progress(job_id, "Identifying speakers", "diarization")
             turns = await asyncio.to_thread(run_diarizer, audio_path, num_speakers)
+            checkpoint(job)
             result = label_transcript(result, turns)
             _emit_progress(job_id, "Speaker identification complete", "diarization")
 
         segments = speakers.parse_transcript(result)
         if segments:
-            set_segments(jobs[job_id], segments)
+            set_segments(job, segments)
         else:  # engine returned something unstructured; keep it verbatim
-            jobs[job_id]["result"] = result
+            job["result"] = result
 
         # If translation requested, translate the transcript
         if translate_to:
+            set_step(job, "translating", f"Translating to {translate_to}")
             _emit_progress(job_id, f"Translating to {translate_to}", "translation")
-            await translate_job_segments(jobs[job_id], api_key, translate_to, engine=engine)
+            await translate_job_segments(job, api_key, translate_to, engine=engine)
+            checkpoint(job)
             _emit_progress(job_id, f"Translation to {translate_to} complete", "translation")
 
-        jobs[job_id]["status"] = "completed"
         _emit_progress(job_id, "Job completed successfully", "info")
+        await _finish(job, "completed")
 
         logger.info(
             "Transcription job completed successfully",
             extra={
                 "job_id": job_id,
                 "duration_seconds": round(time.time() - start_time, 2),
-                "result_length": len(jobs[job_id].get("result", "")),
+                "result_length": len(job.get("result", "")),
             },
         )
 
+    except JobCancelled:
+        logger.info("Transcription job cancelled", extra={"job_id": job_id})
+        _emit_progress(job_id, "Cancelled", "error")
+        await _finish(job, "cancelled")
     except Exception as e:
         logger.exception(
             "Transcription job failed",
             extra={"job_id": job_id, "duration_seconds": round(time.time() - start_time, 2), "error": str(e)},
         )
-        jobs[job_id]["status"] = "failed"
-        jobs[job_id]["error"] = str(e)
         _emit_progress(job_id, f"Transcription failed: {e}", "error")
+        await _finish(job, "failed", str(e))
 
 
 def make_transcriber(engine: str, api_key: str | None) -> Any:
@@ -674,6 +828,11 @@ async def download_transcript(
     """
     if job["status"] != "completed":
         raise HTTPException(status_code=400, detail=f"Job not completed. Status: {job['status']}")
+
+    if not job.get("downloaded_at"):  # starts the grace period of retention=delete
+        job["downloaded_at"] = _now_iso()
+        retention.apply_expiry(job)
+        await store.save(job)
 
     result = job.get("result", "")
     if not result:
