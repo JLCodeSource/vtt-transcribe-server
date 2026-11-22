@@ -2,6 +2,13 @@
 
 All notable changes to vtt-transcribe-server. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.2.1
+
+- A speaker-identification version now says what was asked for and what was found: re-running with 3 speakers on a recording
+  with 2 voices reads "3 requested, 2 found" instead of "3 speakers" ("Auto (N found)" and "N speakers" when they match are
+  unchanged). The wording is derived when shown, so versions stored by earlier releases are corrected too; names you gave a
+  version yourself are kept. `GET /api/jobs/{id}/versions` also reports `found` for each version.
+
 ## 0.2.0
 
 Every version of a job's output is kept.

@@ -81,6 +81,20 @@ describe('versions in the transcript viewer', () => {
     expect(onselect).toHaveBeenCalledWith({ diarization: 'd1' });
   });
 
+  it('shows requested versus found as the server words it, without adding a count', () => {
+    mount({
+      versions: versions({
+        diarizations: [
+          { id: 'd1', label: '3 requested, 2 found', num_speakers: 3, speakers: 2, active: true, created_at: '2026-01-01T09:00:00Z' },
+        ],
+      }),
+      diarization: 'd1',
+    });
+    const text = (screen.getByLabelText('Speaker version') as HTMLSelectElement).options[0].textContent ?? '';
+    expect(text).toContain('3 requested, 2 found');
+    expect(text).not.toContain('2 speakers');
+  });
+
   it('re-runs with a chosen number of speakers, which adds a version', async () => {
     const onrediarize = vi.fn(async () => {});
     mount({ onrediarize });

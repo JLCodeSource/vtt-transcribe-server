@@ -19,6 +19,7 @@ legacy export use). Retention and deletion act on the whole job, so every versio
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -138,11 +139,33 @@ def label_segments(segments: list[Segment], turns: Turns) -> list[str | None]:
     return [p.get("speaker") for p in parsed]
 
 
-def _label_for(labels: list[str | None], requested: int | None) -> str:
-    count = len({lab for lab in labels if lab})
-    if requested:
-        return f"{requested} speakers" if requested != 1 else "1 speaker"
-    return f"Auto ({count} found)"
+# Names the server generated itself: they are derived again whenever shown, so they always say what was asked for and what
+# was found. Anything else is a name the user chose and is shown as typed.
+_GENERATED = re.compile(r"^(\d+ speakers?|Auto \(\d+ found\)|\d+ requested, \d+ found)$")
+
+
+def found_count(version: dict[str, Any]) -> int:
+    """Speakers the diarizer found in this run (from its raw turns; the current labels for jobs migrated without turns)."""
+    turns = version.get("turns") or []
+    ids = {t[2] for t in turns} if turns else {lab for lab in version.get("labels") or [] if lab}
+    return len(ids)
+
+
+def generated_label(requested: int | None, found: int) -> str:
+    """``Auto (2 found)``, ``2 speakers`` (asked for 2, found 2) or ``3 requested, 2 found``."""
+    if not requested:
+        return f"Auto ({found} found)"
+    if requested == found:
+        return "1 speaker" if found == 1 else f"{found} speakers"
+    return f"{requested} requested, {found} found"
+
+
+def display_label(version: dict[str, Any]) -> str:
+    """The version's name as shown: derived for generated names (including ones stored by earlier releases)."""
+    label = version.get("label") or ""
+    if not label or _GENERATED.match(label):
+        return generated_label(version.get("num_speakers"), found_count(version))
+    return label
 
 
 def add_diarization(
@@ -161,7 +184,7 @@ def add_diarization(
     job["dia_seq"] = seq
     version = {
         "id": f"d{seq}",
-        "label": _label_for(resolved, num_speakers),
+        "label": "",
         "num_speakers": num_speakers,
         "method": method,
         "created_at": now_iso(),
@@ -169,6 +192,7 @@ def add_diarization(
         "labels": list(resolved),
         "names": {},
     }
+    version["label"] = display_label(version)  # stored for readability; shown through display_label
     job.setdefault("diarizations", []).append(version)
     if make_active:
         job["active_diarization"] = version["id"]
@@ -256,11 +280,12 @@ def summary(job: dict[str, Any]) -> dict[str, Any]:
         "diarizations": [
             {
                 "id": d["id"],
-                "label": d["label"],
+                "label": display_label(d),
                 "num_speakers": d.get("num_speakers"),
                 "method": d.get("method"),
                 "created_at": d.get("created_at"),
                 "speakers": len({lab for lab in d["labels"] if lab}),
+                "found": found_count(d),
                 "active": d["id"] == job.get("active_diarization"),
             }
             for d in (job.get("diarizations") or [])
@@ -363,7 +388,7 @@ def migrate(job: dict[str, Any]) -> bool:
         job["diarizations"].append(
             {
                 "id": "d1",
-                "label": f"{job['num_speakers']} speakers" if job.get("num_speakers") else f"Auto ({count} found)",
+                "label": generated_label(job.get("num_speakers"), count),
                 "num_speakers": job.get("num_speakers"),
                 "method": "sherpa-onnx",
                 "created_at": job.get("completed_at") or now_iso(),

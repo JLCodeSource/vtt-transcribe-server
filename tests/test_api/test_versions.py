@@ -355,3 +355,52 @@ def test_deleting_a_job_deletes_every_version(client: TestClient, job: str) -> N
     translate(client, job, "Spanish", SPANISH)
     assert client.delete(f"/api/jobs/{job}").status_code == 204
     assert job not in jobs  # versions live inside the job, so retention and deletion cover them together
+
+
+# ---- the label says what was asked for and what was found ----
+
+
+def labels(client: TestClient, job: str) -> list[str]:
+    return [d["label"] for d in client.get(f"/api/jobs/{job}/versions").json()["diarizations"]]
+
+
+def test_label_says_requested_and_found_when_they_differ(client: TestClient, job: str, tmp_path: Any) -> None:
+    rediarize(client, job, TWO, 3, tmp_path)  # three asked for, two found
+    rediarize(client, job, TWO, 2, tmp_path)  # two asked for, two found
+    rediarize(client, job, TWO, None, tmp_path)  # automatic
+    rediarize(client, job, ONE, 1, tmp_path)
+    assert labels(client, job) == ["Auto (3 found)", "3 requested, 2 found", "2 speakers", "Auto (2 found)", "1 speaker"]
+    shown = client.get(f"/api/jobs/{job}/versions").json()["diarizations"]
+    assert [(d["num_speakers"], d["found"]) for d in shown] == [(None, 3), (3, 2), (2, 2), (None, 2), (1, 1)]
+
+
+def test_found_counts_the_diarizers_speakers_not_later_merges(client: TestClient, job: str, tmp_path: Any) -> None:
+    rediarize(client, job, TWO, 3, tmp_path)
+    client.post(f"/api/jobs/{job}/speakers/merge", json={"source_ids": ["SPEAKER_01"], "target_id": "SPEAKER_00"})
+    last = client.get(f"/api/jobs/{job}/versions").json()["diarizations"][-1]
+    assert last["label"] == "3 requested, 2 found"  # what the run found, however it was edited since
+    assert last["speakers"] == 1
+
+
+def test_labels_stored_by_earlier_releases_are_shown_correctly() -> None:
+    old = {"num_speakers": 3, "label": "3 speakers", "turns": [[0, 5, "SPEAKER_00"], [5, 9, "SPEAKER_01"]], "labels": []}
+    assert versions.display_label(old) == "3 requested, 2 found"
+    assert versions.display_label({**old, "label": "Auto (3 found)", "num_speakers": None}) == "Auto (2 found)"
+    no_turns = {"num_speakers": 2, "label": "2 speakers", "turns": [], "labels": ["SPEAKER_00", None, "SPEAKER_01"]}
+    assert versions.display_label(no_turns) == "2 speakers"  # migrated job: the labels are the record
+    assert versions.display_label({**no_turns, "num_speakers": 3}) == "3 requested, 2 found"
+
+
+def test_a_name_the_user_chose_is_kept(client: TestClient, job: str, tmp_path: Any) -> None:
+    rediarize(client, job, TWO, 3, tmp_path)
+    client.put(f"/api/jobs/{job}/diarizations/d2", json={"label": "Interview, two voices"})
+    assert labels(client, job)[1] == "Interview, two voices"
+
+
+def test_migrated_jobs_get_the_new_wording() -> None:
+    job = legacy_job()  # asked for 2 speakers, two labelled
+    versions.migrate(job)
+    assert versions.summary(job)["diarizations"][0]["label"] == "2 speakers"
+    job = legacy_job(num_speakers=3)
+    versions.migrate(job)
+    assert versions.summary(job)["diarizations"][0]["label"] == "3 requested, 2 found"

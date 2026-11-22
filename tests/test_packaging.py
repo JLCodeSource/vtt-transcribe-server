@@ -163,7 +163,7 @@ def test_health_reports_the_server_version_and_the_core_version():
     data = TestClient(app).get("/health").json()
     assert data["version"] == __version__
     assert data["core_version"]
-    assert __version__ == "0.2.0"
+    assert __version__ == "0.2.1"
 
 
 def test_release_notes_come_from_the_changelog():
@@ -174,7 +174,7 @@ def test_release_notes_come_from_the_changelog():
     assert module.section(changelog, "0.2.0") == "- new"
     assert module.section(changelog, "0.1.0") == "First.\n- a"
     assert module.section(changelog, "0.3.0") is None
-    assert module.section((ROOT / "docs" / "CHANGELOG.md").read_text(), "0.2.0")  # the version being released has notes
+    assert module.section((ROOT / "docs" / "CHANGELOG.md").read_text(), "0.2.1")  # the version being released has notes
 
 
 def test_frontend_nginx_leaves_the_upload_limit_to_the_api():
