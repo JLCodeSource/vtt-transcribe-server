@@ -186,6 +186,7 @@ Uploads are limited to 100 MB. Environment settings (all optional):
 | `VTT_MAX_ACTIVE_JOBS` | `50` | queued + running jobs on the whole server before `503` (`0` disables) |
 | `VTT_DATA_DIR` | system temp | where uploaded audio is stored; **use a persistent volume** so queued jobs survive a restart |
 | `VTT_STATIC_DIR` | unset | folder with the built web app to serve at `/`. Unset: the copy packaged in the wheel (if present); empty: no web UI, API only |
+| `MAX_UPLOAD_SIZE` | `4294967296` (4 GiB) | largest accepted upload in bytes. Uploads are streamed to disk and refused as soon as they pass the limit; the web app reads the limit from the server. Behind your own reverse proxy, raise its body limit too (nginx: `client_max_body_size`; the bundled frontend nginx has none) |
 | `VTT_SERVER_DATA_DIR` | `~/.local/share/vtt-transcribe-server` | `vtt-server` only: parent of the SQLite database, `jobs/` and `models/` (same as `--data-dir`) |
 | `DATABASE_URL` | SQLite file (`vtt-server`: in the data dir) | `postgresql://user:pass@host/db` for PostgreSQL |
 | `API_HOST` / `API_PORT` | `127.0.0.1` / `8000` | `vtt-server` listen address (`--host` / `--port`) |

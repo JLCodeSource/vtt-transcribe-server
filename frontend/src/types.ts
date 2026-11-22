@@ -128,6 +128,8 @@ export interface EnginesResponse {
   max_speakers: number;
   /** language names the translator understands (from the core translation model) */
   languages?: string[];
+  /** largest accepted upload in bytes (the server's MAX_UPLOAD_SIZE) */
+  max_upload_bytes?: number;
 }
 
 export interface Me {

@@ -87,7 +87,7 @@ services:
 
       # Storage
       UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
-      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-104857600}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-4294967296}
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

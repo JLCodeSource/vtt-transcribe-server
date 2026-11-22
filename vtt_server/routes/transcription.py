@@ -89,8 +89,30 @@ def _emit_progress(job_id: str, message: str, progress_type: str = "info") -> No
             )
 
 
-# Maximum file size: 100MB
-MAX_FILE_SIZE = 100 * 1024 * 1024
+# Largest accepted upload (MAX_UPLOAD_SIZE, bytes). Default 4 GiB: video files are big. Uploads are streamed to disk in
+# chunks, never held in memory, so the limit is about disk space and what you are willing to host.
+DEFAULT_MAX_UPLOAD = 4 * 1024**3
+
+
+def _configured_max_upload() -> int:
+    try:
+        value = int(os.environ.get("MAX_UPLOAD_SIZE") or DEFAULT_MAX_UPLOAD)
+    except ValueError:
+        return DEFAULT_MAX_UPLOAD
+    return value if value > 0 else DEFAULT_MAX_UPLOAD
+
+
+MAX_FILE_SIZE = _configured_max_upload()
+UPLOAD_CHUNK = 1024 * 1024
+
+
+def _too_large(size_so_far: int) -> HTTPException:
+    limit = MAX_FILE_SIZE
+    shown = f"{limit / 1024**3:.1f} GB" if limit >= 1024**3 else f"{limit // (1024 * 1024)} MB"
+    return HTTPException(
+        status_code=413,
+        detail=f"File too large (over {size_so_far} bytes). Maximum size: {limit} bytes ({shown})",
+    )
 
 # Maximum progress queue size (to prevent unbounded memory growth)
 # A typical transcription job emits ~10-20 progress events, so 100 is generous
@@ -184,7 +206,12 @@ def validate_num_speakers(num_speakers: int | None) -> None:
 @router.get("/engines")
 async def list_engines() -> dict[str, Any]:
     """Selectable transcription engines (drives the frontend's engine picker)."""
-    return {"engines": engine_info(), "max_speakers": MAX_SPEAKERS, "languages": translation_languages()}
+    return {
+        "engines": engine_info(),
+        "max_speakers": MAX_SPEAKERS,
+        "languages": translation_languages(),
+        "max_upload_bytes": MAX_FILE_SIZE,
+    }
 
 
 def _retention_for(user: User, mode: str | None, days: int | None) -> dict[str, Any]:
@@ -194,8 +221,24 @@ def _retention_for(user: User, mode: str | None, days: int | None) -> dict[str, 
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-async def _read_upload(file: UploadFile) -> bytes:
-    """Validate type and size of an upload and return its bytes."""
+async def _copy_upload(file: UploadFile, path: Path) -> int:
+    """Stream an upload to ``path`` in chunks (never all in memory), refusing it as soon as it passes the size limit."""
+    size = 0
+    with path.open("wb") as out:
+        while chunk := await file.read(UPLOAD_CHUNK):
+            size += len(chunk)
+            if size > MAX_FILE_SIZE:
+                logger.warning("Upload refused: file too large", extra={"file_name": file.filename, "size": size})
+                raise _too_large(size)
+            await asyncio.to_thread(out.write, chunk)
+    return size
+
+
+async def _store_upload(file: UploadFile, job: dict[str, Any]) -> int:
+    """Validate the type, then stream the upload to the job's folder in chunks, enforcing the size limit as it goes.
+
+    Sets ``job["audio_path"]`` and returns the size in bytes. A refused or failed upload leaves nothing behind.
+    """
     file_ext = Path(file.filename or "").suffix.lower()
     if file_ext not in SUPPORTED_EXTENSIONS:
         logger.warning("Job creation failed: unsupported file type", extra={"file_name": file.filename, "extension": file_ext})
@@ -203,19 +246,20 @@ async def _read_upload(file: UploadFile) -> bytes:
             status_code=400,
             detail=f"Unsupported file type: {file_ext}. Supported types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
         )
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        max_mb = MAX_FILE_SIZE // (1024 * 1024)
-        logger.warning("Job creation failed: file too large", extra={"file_name": file.filename, "size": len(content)})
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large: {len(content)} bytes. Maximum size: {MAX_FILE_SIZE} bytes ({max_mb}MB)",
-        )
-    return content
+    directory = _job_dir(job["job_id"])
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"input{file_ext}"
+    try:
+        size = await _copy_upload(file, path)
+    except BaseException:
+        shutil.rmtree(directory, ignore_errors=True)
+        raise
+    job["audio_path"] = str(path)
+    return size
 
 
-async def _enqueue(job: dict[str, Any], content: bytes, filename: str) -> dict[str, str]:
-    """Store the upload, record the job as pending and wake the worker. Nothing runs here: the queue runs jobs one by one."""
+async def _enqueue(job: dict[str, Any], size: int) -> dict[str, str]:
+    """Record the (already stored) upload as a pending job and wake the worker. Nothing runs here: jobs run one by one."""
     job_id = job["job_id"]
     job.update(
         status="pending",
@@ -224,11 +268,10 @@ async def _enqueue(job: dict[str, Any], content: bytes, filename: str) -> dict[s
         message="Waiting in the queue",
         created_at=_now_iso(),
         queue_seq=next_seq(),
-        file_size=len(content),
+        file_size=size,
         progress_updates=asyncio.Queue(maxsize=MAX_PROGRESS_QUEUE_SIZE),  # live events for the job's websocket
     )
     jobs[job_id] = job
-    await asyncio.to_thread(_save_audio, job_id, content, filename)
     await store.save(job)
     queue.ensure_running()
     return {"job_id": job_id, "status": "pending", "message": "Job queued"}
@@ -271,7 +314,6 @@ async def create_transcription_job(
     _check_engine(engine, stored_key)
     validate_num_speakers(num_speakers)
     policy = _retention_for(user, retention_mode, retention_days)
-    content = await _read_upload(file)
 
     job: dict[str, Any] = {
         "job_id": str(uuid.uuid4()),
@@ -288,8 +330,9 @@ async def create_transcription_job(
         from vtt_server.routes.api_keys import encrypt_key
 
         job["secret"] = encrypt_key(api_key)
+    size = await _store_upload(file, job)
     logger.info("Transcription job queued", extra={"job_id": job["job_id"], "file_name": file.filename})
-    return await _enqueue(job, content, file.filename)
+    return await _enqueue(job, size)
 
 
 @router.get("/jobs")
@@ -376,34 +419,22 @@ async def detect_language(
             detail=f"Unsupported file type: {file_ext}. Supported types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
         )
 
-    # Read and validate file size
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        max_mb = MAX_FILE_SIZE // (1024 * 1024)
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large: {len(content)} bytes. Maximum size: {MAX_FILE_SIZE} bytes ({max_mb}MB)",
-        )
-
+    handle, name = tempfile.mkstemp(suffix=file_ext)
+    os.close(handle)
+    tmp_path = Path(name)
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp:
-            tmp.write(content)
-            tmp_path = Path(tmp.name)
-
+        await _copy_upload(file, tmp_path)  # a too-large file is refused here, with its own 413
         try:
             transcriber = VideoTranscriber(api_key)
             language_code = await asyncio.to_thread(transcriber.detect_language, tmp_path)
-
             return {
                 "language_code": language_code,
                 "filename": file.filename,
             }
-
-        finally:
-            await asyncio.to_thread(tmp_path.unlink, missing_ok=True)
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Language detection failed: {e!s}") from e
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Language detection failed: {e!s}") from e
+    finally:
+        await asyncio.to_thread(tmp_path.unlink, missing_ok=True)
 
 
 @router.post("/translate")
@@ -464,7 +495,6 @@ async def create_diarization_job(
     check_capacity(user)
     validate_num_speakers(num_speakers)
     policy = _retention_for(user, retention_mode, retention_days)
-    content = await _read_upload(file)
     job: dict[str, Any] = {
         "job_id": str(uuid.uuid4()),
         "user_id": user.id,
@@ -474,7 +504,8 @@ async def create_diarization_job(
         "retention_mode": policy["mode"],
         "retention_days": policy["days"],
     }
-    result = await _enqueue(job, content, file.filename)
+    size = await _store_upload(file, job)
+    result = await _enqueue(job, size)
     result["message"] = "Diarization job queued"
     return result
 
