@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type { TranscriptionJob, WebSocketMessage, TranscriptSegment } from '../types';
+  import { withToken } from '../api';
 
   interface Props {
     job: TranscriptionJob;
@@ -28,7 +29,7 @@
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/jobs/${job.job_id}`;
 
-    ws = new WebSocket(wsUrl);
+    ws = new WebSocket(withToken(wsUrl));
 
     ws.onopen = () => {
       statusMessage = 'Connected. Processing...';

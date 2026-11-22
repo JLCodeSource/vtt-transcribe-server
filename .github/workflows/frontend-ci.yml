@@ -1,9 +1,13 @@
-# NOTE: GitHub Actions are intentionally DISABLED on this private repo (cost). This file does not run
+# NOTE: Actions are currently switched off in the repo settings; enable them when ready (public repo: standard runners are free). This file does not run
 # until Actions are enabled in repo settings.
 name: Frontend CI
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 on:
   push:

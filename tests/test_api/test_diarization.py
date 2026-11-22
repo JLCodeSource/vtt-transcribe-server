@@ -6,6 +6,8 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+pytestmark = pytest.mark.usefixtures("fake_auth")
+
 
 @pytest.fixture
 def client():

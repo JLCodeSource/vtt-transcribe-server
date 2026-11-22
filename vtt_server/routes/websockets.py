@@ -3,9 +3,12 @@
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from vtt_transcribe.logging_config import get_logger
 
+from vtt_server.access import may_access
+from vtt_server.auth import get_current_active_user_header_or_query
+from vtt_server.models import User
 from vtt_server.routes.transcription import jobs
 
 router = APIRouter(tags=["websockets"])
@@ -113,12 +116,19 @@ async def _process_progress_updates(websocket: WebSocket, job_id: str, current_j
 
 
 @router.websocket("/ws/jobs/{job_id}")
-async def websocket_job_updates(websocket: WebSocket, job_id: str) -> None:
+async def websocket_job_updates(
+    websocket: WebSocket,
+    job_id: str,
+    user: User = Depends(get_current_active_user_header_or_query),
+) -> None:
     """WebSocket endpoint for real-time job status and progress updates.
 
     Streams both:
     - Status changes (pending -> processing -> completed/failed)
     - Detailed progress events (language detection, transcription progress, diarization, translation)
+
+    Browsers cannot set headers on a WebSocket, so the bearer token is passed as ``?access_token=``. Only the job's owner
+    (or an administrator) is served; anyone else gets the same "Job not found" as for an unknown id.
     """
     logger.info(
         "WebSocket connection initiated",
@@ -131,7 +141,7 @@ async def websocket_job_updates(websocket: WebSocket, job_id: str) -> None:
         extra={"job_id": job_id},
     )
 
-    if job_id not in jobs:
+    if job_id not in jobs or not may_access(jobs[job_id], user):
         logger.warning(
             "WebSocket connection for unknown job",
             extra={"job_id": job_id},

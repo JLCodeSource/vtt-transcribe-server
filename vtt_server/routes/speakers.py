@@ -10,15 +10,17 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from vtt_transcribe import speakers
 
+from vtt_server.access import owned_job
 from vtt_server.engines import EngineUnavailableError
 from vtt_server.routes import transcription as tx
 
-router = APIRouter(prefix="/api/jobs/{job_id}", tags=["speakers"])
+# Everything here operates on one job: the caller must own it (or be an administrator).
+router = APIRouter(prefix="/api/jobs/{job_id}", tags=["speakers"], dependencies=[Depends(owned_job)])
 
 MAX_CLIP_SECONDS = 15.0
 

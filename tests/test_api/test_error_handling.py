@@ -2,7 +2,10 @@
 
 import io
 
+import pytest
 from fastapi.testclient import TestClient
+
+pytestmark = pytest.mark.usefixtures("fake_auth")
 
 
 def test_file_size_limit_enforcement() -> None:

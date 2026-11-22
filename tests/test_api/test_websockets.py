@@ -6,6 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from vtt_server.models import User
+
+pytestmark = pytest.mark.usefixtures("fake_auth")
+
+# For tests that call the handler directly (bypassing the dependency): an administrator may open any job.
+_ADMIN = User(id=1, username="tester", email="t@example.com", hashed_password="x", is_active=True, is_superuser=True)
+
 
 @pytest.fixture
 def client():
@@ -703,7 +710,7 @@ def test_websocket_job_deleted_check() -> None:
 
     async def run_test() -> None:
         # Start streaming in background
-        task = asyncio.create_task(websocket_job_updates(mock_ws, job_id))
+        task = asyncio.create_task(websocket_job_updates(mock_ws, job_id, user=_ADMIN))
 
         # Wait for first status send
         await asyncio.sleep(0.1)
@@ -763,7 +770,7 @@ def test_websocket_status_change() -> None:
 
     async def run_test() -> None:
         # Start streaming in background
-        task = asyncio.create_task(websocket_job_updates(mock_ws, job_id))
+        task = asyncio.create_task(websocket_job_updates(mock_ws, job_id, user=_ADMIN))
 
         # Wait for first status send
         await asyncio.sleep(0.1)
@@ -821,7 +828,7 @@ def test_websocket_generic_exception() -> None:
 
     async def run_test() -> None:
         # This should catch WebSocketDisconnect and pass (line 58)
-        await websocket_job_updates(mock_ws, job_id)
+        await websocket_job_updates(mock_ws, job_id, user=_ADMIN)
 
     # Run - should catch WebSocketDisconnect on line 57 and execute pass on line 58
     asyncio.run(run_test())

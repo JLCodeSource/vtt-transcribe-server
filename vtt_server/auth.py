@@ -4,7 +4,7 @@ import os
 from datetime import UTC, datetime, timedelta
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt import PyJWTError as JWTError
 from passlib.context import CryptContext
@@ -89,11 +89,8 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> U
     return user
 
 
-async def get_current_user(
-    token: str | None = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    """Get current authenticated user from JWT token."""
+async def user_from_token(token: str | None, db: AsyncSession) -> User:
+    """Resolve a JWT to its user, or raise 401."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -120,6 +117,14 @@ async def get_current_user(
     return user
 
 
+async def get_current_user(
+    token: str | None = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Get current authenticated user from JWT token."""
+    return await user_from_token(token, db)
+
+
 async def get_current_user_allow_reset(current_user: User = Depends(get_current_user)) -> User:
     """Current active user, even if they still have to change their password (used by /auth/me and change-password)."""
     if not current_user.is_active:
@@ -134,6 +139,20 @@ async def get_current_active_user(current_user: User = Depends(get_current_user_
     if current_user.must_change_password:
         raise HTTPException(status_code=403, detail="Password change required")
     return current_user
+
+
+async def get_current_active_user_header_or_query(
+    token: str | None = Depends(oauth2_scheme),
+    access_token: str | None = Query(None, description="Bearer token for <audio src> and WebSocket URLs"),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Like get_current_active_user, but the token may also arrive as ``?access_token=`` (media elements, WebSockets)."""
+    user = await user_from_token(token or access_token, db)
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    if user.must_change_password:
+        raise HTTPException(status_code=403, detail="Password change required")
+    return user
 
 
 async def get_current_admin(current_user: User = Depends(get_current_active_user)) -> User:

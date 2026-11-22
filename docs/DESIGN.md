@@ -119,8 +119,8 @@ Postgres via compose when needed; `SECRET_KEY`, `ENCRYPTION_KEY`, `SESSION_SECRE
 - **Registry**: `ghcr.io/jlcodesource/vtt-transcribe-server`, tags `sha-<commit>` and `latest` (from `main`).
 - **CI/CD (designed, not enabled)**: on push to `main`: run the container test commands from the README (backend + frontend),
   `docker buildx build --push` to GHCR, then deploy (`flyctl deploy --image ...@sha` or `ssh host 'docker compose pull && up -d'`).
-  The workflows in `.github/workflows` are inert while Actions are off on this private repo and need adapting
-  (`docker-build-test.yml`, `ci.yml`) when switched on. **Do not enable Actions yet**; Dependabot alerts stay off for the private repo.
+  The workflows in `.github/workflows` need adapting (`docker-build-test.yml`, `ci.yml`) before Actions are switched on. The repo
+  is public, so standard-runner minutes are free; keep runs path-filtered and cancel superseded ones.
 - **Health/rollback**: `/health` for the platform check; rollback = redeploy the previous `sha-` tag. Persistent state lives only in the DB and
   the two volumes, so images are disposable.
 - **Config/secrets still to wire** **[todo]**: Fly app config or a prod compose file, TLS, a first-boot model prefetch
