@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { changePassword, deleteAccount, fetchProfile, removeOpenAIKey, setOpenAIKey, updateProfile } from '../api';
-  import { languageChoices } from '../languages';
+  import { languageChoices, loadLanguages, TRANSLATION_LANGUAGES } from '../languages';
   import type { Profile } from '../types';
 
   interface Props {
@@ -10,6 +10,9 @@
   }
 
   const { token, onaccountdeleted }: Props = $props();
+
+  let languages: string[] = $state(TRANSLATION_LANGUAGES);
+  loadLanguages().then((l) => (languages = l));
 
   type Section = 'retention' | 'defaults' | 'key' | 'email' | 'password' | 'account' | 'page';
 
@@ -134,7 +137,7 @@
           <span>Translate to</span>
           <select bind:value={translateTo} aria-label="Default translation language">
             <option value="">No translation</option>
-            {#each languageChoices(translateTo) as l (l)}<option value={l}>{l}</option>{/each}
+            {#each languageChoices(languages, translateTo) as l (l)}<option value={l}>{l}</option>{/each}
           </select>
         </label>
       </div>
