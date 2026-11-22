@@ -117,6 +117,7 @@ class TestSpeakerEndpoints:
             sent = translator.return_value.translate_transcript.call_args.args[0]
         assert r.status_code == 200
         assert r.json()["translated_to"] == "Spanish"
+        assert r.json()["engine"] == "openai"
         assert "Alice" not in sent
         assert "SPEAKER" not in sent
         assert client.get(f"/api/jobs/{job}/download", params={"format": "txt", "translated": "true"}).text.startswith(
@@ -258,6 +259,7 @@ class TestEngineSeam:
             r = client.post(f"/api/jobs/{job}/translate", json={"target_language": "French"})
         assert r.status_code == 200
         assert r.json()["translated_to"] == "French"
+        assert r.json()["engine"] == "local"  # lets the UI skip the OpenAI key prompt
 
     def test_openai_translation_without_key_is_422(self, client, job):
         assert client.post(f"/api/jobs/{job}/translate", json={"target_language": "French"}).status_code == 422

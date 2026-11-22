@@ -286,8 +286,11 @@
   async function handleTranslate(language: string) {
     if (!currentJob) return;
     const apiKey = sessionStorage.getItem('openai_api_key') ?? '';
-    if (!apiKey) throw new Error('Enter your OpenAI API key (Settings) to translate.');
-    applySegments(await translateJob(currentJob.job_id, language, apiKey));
+    // Only OpenAI translation needs a key; jobs transcribed with the local engine translate on the server.
+    if ((segmentsData?.engine ?? 'openai') === 'openai' && !apiKey) {
+      throw new Error('Enter your OpenAI API key (Settings) to translate.');
+    }
+    applySegments(await translateJob(currentJob.job_id, language, apiKey || null));
   }
 
   function handleError(event: CustomEvent<string>) {
