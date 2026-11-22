@@ -204,7 +204,7 @@ class TestPipeline:
             vt.return_value.transcribe.return_value = "[00:00:00 - 00:00:10] hello"
             asyncio.run(_process_transcription("p2", b"x", "a.mp3", "k", True))
         assert jobs["p2"]["status"] == "failed"
-        assert "model download" in jobs["p2"]["error"]
+        assert "could not be downloaded" in jobs["p2"]["error"]  # friendly wording; the raw text stays in the log
         jobs.pop("p2")
 
 

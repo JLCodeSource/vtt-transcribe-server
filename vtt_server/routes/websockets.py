@@ -181,5 +181,5 @@ async def websocket_job_updates(
             "WebSocket error",
             extra={"job_id": job_id, "error": str(e)},
         )
-        await websocket.send_json({"error": str(e)})
+        await websocket.send_json({"error": "Connection error. Reload the page."})
         await websocket.close(code=1011)
