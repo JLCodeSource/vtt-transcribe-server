@@ -20,6 +20,9 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'ruff.toml'
+      - 'hatch_build.py'
+      - 'scripts/**'
+      - 'docs/CHANGELOG.md'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [ main ]
@@ -29,6 +32,9 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'ruff.toml'
+      - 'hatch_build.py'
+      - 'scripts/**'
+      - 'docs/CHANGELOG.md'
       - '.github/workflows/ci.yml'
 
 jobs:

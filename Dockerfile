@@ -17,8 +17,10 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir uv
 
+# The web UI reaches the image through the api-ui stage below, not through the wheel
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    VTT_ALLOW_NO_UI=1
 
 # Dependency layer (cached until pyproject.toml / uv.lock change)
 COPY pyproject.toml uv.lock README.md ./
@@ -27,6 +29,7 @@ ARG SYNC_ARGS=""
 RUN uv sync --frozen --no-dev --no-install-project ${SYNC_ARGS}
 
 # Project source
+COPY hatch_build.py ./
 COPY vtt_server ./vtt_server
 RUN uv sync --frozen --no-dev --no-editable ${SYNC_ARGS}
 
