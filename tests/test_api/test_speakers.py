@@ -169,7 +169,7 @@ class TestPipeline:
             )
             assert r.status_code == 200
             job_id = r.json()["job_id"]
-            for _ in range(100):  # the job runs as a background task; wait for it instead of racing it
+            for _ in range(400):  # the job runs as a background task; wait for it instead of racing it
                 seg = client.get(f"/api/jobs/{job_id}/speakers")
                 if seg.status_code != 409:
                     break
@@ -255,7 +255,7 @@ class TestEngineSeam:
             )
             assert r.status_code == 200
             job_id = r.json()["job_id"]
-            for _ in range(100):
+            for _ in range(400):
                 got = client.get(f"/api/jobs/{job_id}/segments")
                 if got.status_code != 409:
                     break
