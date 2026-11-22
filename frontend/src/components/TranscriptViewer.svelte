@@ -96,22 +96,22 @@
   <div class="transcript-header">
     <h2>📄 Transcript</h2>
     <div class="header-actions">
-      <button type="button" class="secondary" onclick={() => downloadTranscript('txt')}>
+      <button type="button" class="sm" onclick={() => downloadTranscript('txt')}>
         Download TXT
       </button>
-      <button type="button" class="secondary" onclick={() => downloadTranscript('vtt')}>
+      <button type="button" class="sm" onclick={() => downloadTranscript('vtt')}>
         Download VTT
       </button>
-      <button type="button" class="secondary" onclick={() => downloadTranscript('srt')}>
+      <button type="button" class="sm" onclick={() => downloadTranscript('srt')}>
         Download SRT
       </button>
-      <button type="button" class="secondary" onclick={() => downloadTranscript('json')}>
+      <button type="button" class="sm" onclick={() => downloadTranscript('json')}>
         Download JSON
       </button>
       {#if onreview && speakers.length > 0}
-        <button type="button" class="secondary" onclick={onreview}>Review speakers</button>
+        <button type="button" class="sm" onclick={onreview}>Review speakers</button>
       {/if}
-      <button type="button" class="secondary" onclick={onreset}>New Transcription</button>
+      <button type="button" class="sm primary" onclick={onreset}>New Transcription</button>
     </div>
   </div>
 
@@ -124,7 +124,7 @@
         bind:value={targetLanguage}
         class="search-input"
       />
-      <button type="button" class="secondary" onclick={translate} disabled={translating || !targetLanguage.trim()}>
+      <button type="button" onclick={translate} disabled={translating || !targetLanguage.trim()}>
         {translating ? 'Translating…' : 'Translate'}
       </button>
       {#if hasTranslation}
@@ -134,7 +134,7 @@
         </label>
       {/if}
     </div>
-    {#if translateError}<p class="error-message" role="alert">{translateError}</p>{/if}
+    {#if translateError}<p class="notice error" role="alert">{translateError}</p>{/if}
   {/if}
 
   <div class="controls">
@@ -184,7 +184,7 @@
   .transcript-container {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: var(--space-4);
   }
 
   .transcript-header {
@@ -192,112 +192,101 @@
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 1rem;
+    gap: var(--space-3);
   }
 
   .transcript-header h2 {
-    margin: 0;
-    font-size: 1.75rem;
+    font-size: var(--text-xl);
   }
 
   .header-actions {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
     flex-wrap: wrap;
-  }
-
-  .header-actions button {
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
   }
 
   .controls {
     display: flex;
-    gap: 1rem;
+    gap: var(--space-3);
     flex-wrap: wrap;
+    align-items: center;
   }
 
   .search-input {
     flex: 1;
-    min-width: 200px;
+    min-width: 12rem;
+    width: auto;
   }
 
   .speaker-filter {
-    min-width: 150px;
+    min-width: 9rem;
+    width: auto;
+  }
+
+  .show-translation {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
   }
 
   .segment-count {
-    font-size: 0.875rem;
-    color: var(--text-light);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
   }
 
   .segments {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-2);
     max-height: 600px;
     overflow-y: auto;
-    padding: 1rem;
-    background: var(--background);
-    border-radius: 12px;
+    padding: var(--space-3);
+    background: var(--surface-2);
+    border-radius: var(--radius);
   }
 
   .segment {
-    padding: 1rem;
-    background: white;
-    border-radius: 8px;
-    border: 2px solid var(--border-color);
-    transition: all 0.2s;
-  }
-
-  .segment:hover {
-    border-color: var(--primary-color);
-    transform: translateX(4px);
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
   }
 
   .segment.has-speaker {
-    border-left: 4px solid var(--primary-color);
+    border-left: 4px solid var(--accent);
   }
 
   .segment-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.5rem;
-    gap: 1rem;
+    margin-bottom: var(--space-1);
+    gap: var(--space-3);
   }
 
   .timestamp {
-    font-family: 'Courier New', monospace;
-    font-size: 0.875rem;
-    color: var(--text-light);
-    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
   }
 
   .speaker-badge {
-    padding: 0.25rem 0.75rem;
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-    color: white;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
+    padding: 0.1rem 0.6rem;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border-radius: var(--radius-pill);
+    font-size: var(--text-xs);
+    font-weight: 650;
   }
 
   .segment-text {
-    margin: 0;
     line-height: 1.6;
-    color: var(--text-color);
   }
 
   .empty-state {
     text-align: center;
-    padding: 3rem;
-    color: var(--text-light);
-  }
-
-  .empty-state p {
-    margin: 0;
-    font-size: 1.125rem;
+    padding: var(--space-6);
+    color: var(--text-muted);
   }
 </style>

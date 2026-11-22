@@ -36,38 +36,59 @@
 </script>
 
 <div class="wrap">
-  <form class="card" onsubmit={submit}>
+  <form class="card form" onsubmit={submit}>
     <h2>{forced ? 'Choose a new password' : 'Change password'}</h2>
     {#if forced}
       <p class="note">An administrator has reset your password. Enter the temporary password you were given, then choose your own.</p>
     {/if}
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
-    <label>
+    {#if error}<p class="notice error" role="alert">{error}</p>{/if}
+    <label class="field">
       {forced ? 'Temporary password' : 'Current password'}
       <input type="password" bind:value={current} autocomplete="current-password" required />
     </label>
-    <label>
+    <label class="field">
       New password
       <input type="password" bind:value={next} autocomplete="new-password" required minlength="8" />
     </label>
-    <label>
+    <label class="field">
       Repeat new password
       <input type="password" bind:value={confirm} autocomplete="new-password" required minlength="8" />
     </label>
-    <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</button>
-    {#if onlogout}<button type="button" class="link" onclick={onlogout}>Sign out</button>{/if}
+    <button type="submit" class="primary lg" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</button>
+    {#if onlogout}<button type="button" class="ghost" onclick={onlogout}>Sign out</button>{/if}
   </form>
 </div>
 
 <style>
-  .wrap { display: flex; justify-content: center; padding: 3rem 1rem; }
-  .card { background: white; border-radius: 12px; padding: 2rem; width: 100%; max-width: 420px; box-shadow: 0 4px 16px rgba(0,0,0,.1); display: flex; flex-direction: column; gap: 1rem; }
-  h2 { margin: 0; }
-  label { display: flex; flex-direction: column; gap: .35rem; font-size: .9rem; color: #374151; }
-  input { padding: .6rem .75rem; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem; }
-  button[type='submit'] { padding: .7rem; border: 0; border-radius: 8px; background: #6366f1; color: white; font-weight: 600; cursor: pointer; }
-  button[disabled] { opacity: .6; cursor: default; }
-  .link { background: none; border: 0; color: #6366f1; cursor: pointer; }
-  .error { background: #fee2e2; color: #991b1b; padding: .6rem .75rem; border-radius: 8px; margin: 0; }
-  .note { color: #4b5563; margin: 0; font-size: .9rem; }
+  .wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .form {
+    width: 100%;
+    max-width: 26rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-6);
+    box-shadow: var(--shadow);
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+  }
+
+  .field {
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .note {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+  }
 </style>

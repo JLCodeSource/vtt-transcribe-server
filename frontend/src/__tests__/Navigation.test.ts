@@ -36,7 +36,7 @@ describe('Navigation', () => {
     it('renders menu items as buttons', () => {
       render(Navigation);
       const buttons = screen.getAllByRole('button');
-      expect(buttons.length).toBe(4);
+      expect(buttons.length).toBe(5);
     });
   });
 
@@ -170,6 +170,27 @@ describe('Navigation', () => {
       render(Navigation);
       const buttons = screen.getAllByRole('button');
       expect(buttons[3].textContent).toContain('About');
+    });
+  });
+
+  describe('Narrow screens', () => {
+    it('has a menu button that toggles the drawer and closes it after navigating', async () => {
+      const onnavigate = vi.fn();
+      const { container } = render(Navigation, { props: { onnavigate } });
+      const toggle = screen.getByRole('button', { name: 'Menu' });
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      await fireEvent.click(toggle);
+      expect(container.querySelector('nav')?.classList.contains('open')).toBe(true);
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      await fireEvent.click(screen.getByText('Jobs'));
+      expect(onnavigate).toHaveBeenCalledWith('jobs');
+      expect(container.querySelector('nav')?.classList.contains('open')).toBe(false);
+    });
+
+    it('marks the current page for assistive technology', () => {
+      render(Navigation, { props: { currentPage: 'jobs' } });
+      expect(screen.getByText('Jobs').closest('button')?.getAttribute('aria-current')).toBe('page');
+      expect(screen.getByText('Profile').closest('button')?.getAttribute('aria-current')).toBeNull();
     });
   });
 

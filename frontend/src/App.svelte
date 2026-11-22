@@ -324,7 +324,6 @@
 
   <div class="app-wrapper">
     <header class="app-header">
-      <h1>🎬 VTT Transcribe</h1>
       <UserMenu {username} isLoggedIn={true} onlogout={handleLogout} onsettings={openSettings} />
     </header>
 
@@ -340,7 +339,7 @@
         </div>
       {:else if currentPage === 'jobs'}
         <div class="page-header">
-          <h2>📋 Transcription Jobs</h2>
+          <h2>Transcription Jobs</h2>
           <p>Your queue, progress and finished transcripts</p>
         </div>
         <div class="content-card">
@@ -368,20 +367,20 @@
               {/if}
             </div>
           {:else}
-            <Jobs onopen={openJob} {focusJobId} />
+            <Jobs onopen={openJob} {focusJobId} onhome={() => (currentPage = 'home')} />
           {/if}
         </div>
       {:else if currentPage === 'profile' && accessToken}
         <div class="page-header">
-          <h2>👤 Profile</h2>
-          <p>Retention, your OpenAI key, email and account</p>
+          <h2>Profile & settings</h2>
+          <p>Defaults for new jobs, retention, your OpenAI key, email and account</p>
         </div>
         <div class="content-card">
           <Profile token={accessToken} onaccountdeleted={handleLogout} />
         </div>
       {:else if currentPage === 'admin' && isAdmin && accessToken}
         <div class="page-header">
-          <h2>🛡️ Administration</h2>
+          <h2>Administration</h2>
           <p>Review users, deactivate or delete accounts, and force password resets</p>
         </div>
         <div class="content-card">
@@ -389,7 +388,7 @@
         </div>
       {:else if currentPage === 'about'}
         <div class="page-header">
-          <h2>ℹ️ About VTT Transcribe</h2>
+          <h2>About VTT Transcribe</h2>
           <p>Learn more about this application</p>
         </div>
         <div class="content-card">
@@ -410,112 +409,93 @@
     </main>
 
     <footer class="app-footer">
-      <p>Powered by OpenAI Whisper & sherpa-onnx</p>
+      <p>Powered by OpenAI Whisper &amp; sherpa-onnx · <a href="https://github.com/JLCodeSource/vtt-transcribe-server">Source on GitHub</a></p>
     </footer>
   </div>
 
 {/if}
 
 <style>
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    min-height: 100vh;
-  }
-
   .app-wrapper {
-    margin-left: 250px;
+    margin-left: var(--nav-width);
     min-height: 100vh;
     display: flex;
     flex-direction: column;
   }
 
   .app-header {
-    background: white;
-    padding: 1rem 2rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    height: 3.75rem;
+    padding: 0 var(--space-6);
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    justify-content: flex-end;
     position: sticky;
     top: 0;
     z-index: 90;
   }
 
-  .app-header h1 {
-    margin: 0;
-    font-size: 1.5rem;
-    color: #667eea;
-    font-weight: 700;
-  }
-
   .main-content {
     flex: 1;
-    padding: 2rem;
+    width: 100%;
+    max-width: var(--content-width);
+    margin: 0 auto;
+    padding: var(--space-6);
   }
 
   .page-header {
-    text-align: center;
-    color: white;
-    margin-bottom: 2rem;
+    margin-bottom: var(--space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
   }
 
   .page-header h2 {
-    font-size: 2.5rem;
-    margin: 0 0 0.5rem 0;
-    font-weight: 700;
+    font-size: var(--text-2xl);
+    letter-spacing: -0.015em;
   }
 
   .page-header p {
-    font-size: 1.125rem;
-    margin: 0;
-    opacity: 0.9;
+    color: var(--text-muted);
   }
 
   .content-card {
-    background: white;
-    border-radius: 16px;
-    padding: 2rem;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    max-width: 1200px;
-    margin: 0 auto;
-  }
-
-  .content-card h3 {
-    color: #111827;
-    margin: 1.5rem 0 1rem 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: var(--space-5);
   }
 
   .content-card ul {
     line-height: 1.8;
-    color: #374151;
+    color: var(--text-muted);
   }
 
-  .back { align-self: flex-start; background: none; border: none; color: #4f46e5; cursor: pointer; padding: 0; }
-  .error-text { color: #b91c1c; }
+  .content-card h3 {
+    margin: var(--space-5) 0 var(--space-2);
+  }
 
-  .placeholder-text {
-    text-align: center;
-    color: #9ca3af;
-    font-size: 1.125rem;
-    padding: 3rem;
+  .back {
+    align-self: flex-start;
+  }
+
+  .error-text {
+    color: var(--danger);
   }
 
   .job-section {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: var(--space-5);
   }
 
   .app-footer {
     text-align: center;
-    color: white;
-    padding: 2rem;
-    opacity: 0.8;
-    font-size: 0.9rem;
-    margin-top: auto;
+    color: var(--text-muted);
+    padding: var(--space-5);
+    font-size: var(--text-sm);
   }
 
   .auth-wrapper {
@@ -524,28 +504,44 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 2rem;
+    gap: var(--space-5);
+    padding: var(--space-5) var(--space-4);
   }
 
   .auth-header {
     text-align: center;
-    color: white;
-    margin-bottom: 2rem;
   }
 
   .auth-header h1 {
-    font-size: 2.5rem;
-    margin: 0 0 0.5rem 0;
-    font-weight: 700;
+    font-size: var(--text-2xl);
+    margin-bottom: var(--space-1);
   }
 
   .auth-subtitle {
-    font-size: 1.125rem;
-    margin: 0;
-    opacity: 0.9;
+    color: var(--text-muted);
   }
 
-  .app-footer p {
-    margin: 0;
+  @media (max-width: 800px) {
+    .app-wrapper {
+      margin-left: 0;
+    }
+
+    .app-header {
+      position: static;
+      height: 3rem;
+      padding: 0 var(--space-4);
+    }
+
+    .main-content {
+      padding: var(--space-4);
+    }
+
+    .content-card {
+      padding: var(--space-4);
+    }
+
+    .page-header h2 {
+      font-size: var(--text-xl);
+    }
   }
 </style>

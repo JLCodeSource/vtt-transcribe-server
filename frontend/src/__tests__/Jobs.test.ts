@@ -44,6 +44,39 @@ describe('Jobs page', () => {
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('42');
   });
 
+  it('does not repeat the step label when the message is the same', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      list([job({ status: 'processing', step: 'detecting', progress: 0.02, queue_position: null, message: 'Detecting language' })]),
+    );
+    render(Jobs, { onopen: () => {} });
+    const step = await screen.findByText('Detecting language');
+    expect(step.textContent).toBe('Detecting language');
+  });
+
+  it('orders running first, then the queue in order, then finished newest first', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      list([
+        job({ job_id: 'old', filename: 'old.mp3', status: 'completed', step: 'done', queue_position: null, completed_at: '2026-01-01T10:00:00Z' }),
+        job({ job_id: 'q2', filename: 'q2.mp3', queue_position: 2 }),
+        job({ job_id: 'new', filename: 'new.mp3', status: 'completed', step: 'done', queue_position: null, completed_at: '2026-02-01T10:00:00Z' }),
+        job({ job_id: 'q1', filename: 'q1.mp3', queue_position: 1 }),
+        job({ job_id: 'run', filename: 'run.mp3', status: 'processing', step: 'transcribing', progress: 0.5, queue_position: null }),
+      ]),
+    );
+    render(Jobs, { onopen: () => {} });
+    await screen.findByText('run.mp3');
+    const names = screen.getAllByTestId('job-row').map((r) => r.querySelector('.name')?.textContent);
+    expect(names).toEqual(['run.mp3', 'q1.mp3', 'q2.mp3', 'new.mp3', 'old.mp3']);
+  });
+
+  it('offers to add files from the empty state', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(list([]));
+    const onhome = vi.fn();
+    render(Jobs, { onopen: () => {}, onhome });
+    await fireEvent.click(await screen.findByText('Add files'));
+    expect(onhome).toHaveBeenCalled();
+  });
+
   it('cancels a queued job and refreshes', async () => {
     const f = fetch as ReturnType<typeof vi.fn>;
     f.mockResolvedValueOnce(list([job()]))

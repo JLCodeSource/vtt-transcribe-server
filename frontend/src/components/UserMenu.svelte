@@ -82,46 +82,37 @@
   }
 
   .user-button {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 0.875rem;
-    transition: all 0.2s ease;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  }
-
-  .user-button:hover {
-    background: #f9fafb;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    gap: var(--space-2);
+    padding: 0.25rem 0.75rem 0.25rem 0.3rem;
+    border-radius: var(--radius-pill);
+    background: var(--surface);
   }
 
   .user-avatar {
-    width: 32px;
-    height: 32px;
+    width: 1.75rem;
+    height: 1.75rem;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: var(--accent);
+    color: var(--on-accent);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 600;
-    font-size: 0.875rem;
+    font-weight: 700;
+    font-size: var(--text-sm);
   }
 
   .user-name {
-    font-weight: 500;
-    color: #374151;
+    font-weight: 600;
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .chevron {
-    font-size: 0.625rem;
-    color: #9ca3af;
-    transition: transform 0.2s ease;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    transition: transform 0.15s ease;
   }
 
   .chevron.open {
@@ -130,66 +121,39 @@
 
   .dropdown-menu {
     position: absolute;
-    top: calc(100% + 0.5rem);
+    top: calc(100% + var(--space-2));
     right: 0;
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
     min-width: 200px;
+    padding: var(--space-1);
     z-index: 1000;
-    animation: slideDown 0.2s ease;
-  }
-
-  @keyframes slideDown {
-    from {
-      opacity: 0;
-      transform: translateY(-8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
   }
 
   .menu-item-info {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid #e5e7eb;
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border);
   }
 
   .menu-item-info p {
-    margin: 0;
-    font-size: 0.75rem;
-    color: #6b7280;
-    line-height: 1.4;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
   }
 
   .menu-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
     width: 100%;
-    padding: 0.75rem 1rem;
-    border: none;
-    background: none;
-    cursor: pointer;
-    font-size: 0.875rem;
-    color: #374151;
-    text-align: left;
-    transition: background 0.15s ease;
-  }
-
-  .menu-item:hover {
-    background: #f3f4f6;
-  }
-
-  .menu-icon {
-    font-size: 1.125rem;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    border: 0;
+    background: transparent;
+    font-weight: 500;
   }
 
   .menu-divider {
     height: 1px;
-    background: #e5e7eb;
-    margin: 0.25rem 0;
+    background: var(--border);
+    margin: var(--space-1) 0;
   }
 </style>
