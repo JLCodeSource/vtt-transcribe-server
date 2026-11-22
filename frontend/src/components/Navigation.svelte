@@ -2,16 +2,18 @@
   interface Props {
     currentPage?: string;
     onnavigate?: (page: string) => void;
+    showAdmin?: boolean;
   }
 
-  let { currentPage = 'home', onnavigate }: Props = $props();
+  let { currentPage = 'home', onnavigate, showAdmin = false }: Props = $props();
 
-  const menuItems = [
+  const baseItems = [
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'jobs', label: 'Jobs', icon: '📋' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
     { id: 'about', label: 'About', icon: 'ℹ️' }
   ];
+  const menuItems = $derived(showAdmin ? [...baseItems, { id: 'admin', label: 'Admin', icon: '🛡️' }] : baseItems);
 
   function handleNavigate(page: string) {
     if (onnavigate) {

@@ -73,3 +73,23 @@ export interface EnginesResponse {
   diarizers: string[];
   max_speakers: number;
 }
+
+export interface Me {
+  id: number;
+  username: string;
+  email: string;
+  is_active: boolean;
+  is_superuser: boolean;
+  must_change_password: boolean;
+}
+
+export interface AdminUser extends Me {
+  oauth_provider: string | null;
+  created_at: string;
+  job_count: number;
+}
+
+export interface AdminUserList {
+  total: number;
+  users: AdminUser[];
+}

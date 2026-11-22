@@ -12,10 +12,11 @@ from vtt_server.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
     create_access_token,
-    get_current_active_user,
+    get_current_user_allow_reset,
     get_password_hash,
     get_user_by_email,
     get_user_by_username,
+    verify_password,
 )
 from vtt_server.database import get_db
 from vtt_server.models import User
@@ -42,6 +43,7 @@ class UserResponse(BaseModel):
     email: str
     is_active: bool
     is_superuser: bool
+    must_change_password: bool = False
 
 
 class Token(BaseModel):
@@ -49,6 +51,14 @@ class Token(BaseModel):
 
     access_token: str
     token_type: str
+    must_change_password: bool = False
+
+
+class PasswordChange(BaseModel):
+    """Change-password request."""
+
+    current_password: str
+    new_password: str
 
 
 class TokenData(BaseModel):
@@ -107,13 +117,40 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
 
-    return Token(access_token=access_token, token_type="bearer")  # noqa: S106
+    return Token(access_token=access_token, token_type="bearer", must_change_password=bool(user.must_change_password))  # noqa: S106
 
 
 @router.get("/me", response_model=UserResponse)
-async def read_users_me(current_user: User = Depends(get_current_active_user)) -> User:
-    """Get current user information."""
+async def read_users_me(current_user: User = Depends(get_current_user_allow_reset)) -> User:
+    """Get current user information (works while a password change is pending, so the UI can prompt for it)."""
     return current_user
+
+
+MIN_PASSWORD_LENGTH = 8
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    data: PasswordChange,
+    current_user: User = Depends(get_current_user_allow_reset),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Change your own password. Clears a pending administrator-forced reset."""
+    if current_user.oauth_provider is not None:
+        raise HTTPException(status_code=400, detail="Password sign-in is not available for this account")
+    if not verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if len(data.new_password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"New password must be at least {MIN_PASSWORD_LENGTH} characters")
+    if data.new_password == data.current_password:
+        raise HTTPException(status_code=400, detail="New password must differ from the current one")
+    current_user.hashed_password = get_password_hash(data.new_password)
+    current_user.must_change_password = False
+    db.add(current_user)
+    await db.commit()

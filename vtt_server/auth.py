@@ -120,10 +120,26 @@ async def get_current_user(
     return user
 
 
-async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
-    """Get current active user."""
+async def get_current_user_allow_reset(current_user: User = Depends(get_current_user)) -> User:
+    """Current active user, even if they still have to change their password (used by /auth/me and change-password)."""
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
+
+
+async def get_current_active_user(current_user: User = Depends(get_current_user_allow_reset)) -> User:
+    """Get current active user. Users who must change their password are blocked until they do."""
+    if not current_user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    if current_user.must_change_password:
+        raise HTTPException(status_code=403, detail="Password change required")
+    return current_user
+
+
+async def get_current_admin(current_user: User = Depends(get_current_active_user)) -> User:
+    """Current active user, who must be an administrator."""
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Administrator access required")
     return current_user
 
 

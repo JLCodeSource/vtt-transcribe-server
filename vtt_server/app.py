@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from vtt_transcribe import __version__
 
 from vtt_server.database import init_db
-from vtt_server.routes import api_keys, auth, health, jobs, speakers, transcription, websockets
+from vtt_server.routes import admin, api_keys, auth, health, jobs, speakers, transcription, websockets
 
 # OAuth is optional - only available if authlib/httpx are installed
 try:
@@ -80,6 +80,7 @@ app.add_middleware(
 # Public routes
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(admin.router)
 
 # OAuth routes (optional - only if dependencies installed)
 if OAUTH_AVAILABLE and oauth is not None:

@@ -1,4 +1,4 @@
-import type { EnginesResponse, SegmentsResponse } from './types';
+import type { AdminUser, AdminUserList, EnginesResponse, Me, SegmentsResponse } from './types';
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -45,3 +45,38 @@ export const clipUrl = (id: string, speakerId: string, start?: number, end?: num
   const q = start !== undefined && end !== undefined ? `?start=${start}&end=${end}` : '';
   return `${job(id)}/speakers/${encodeURIComponent(speakerId)}/clip${q}`;
 };
+
+// ---- account + admin (these need the bearer token; the job endpoints above do not) ----
+const authed = (token: string, init: RequestInit = {}): RequestInit => ({
+  ...init,
+  headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },
+});
+
+async function requestNoBody(url: string, init: RequestInit): Promise<void> {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
+    throw new Error(typeof body.detail === 'string' ? body.detail : `Request failed: ${response.status}`);
+  }
+}
+
+export const fetchMe = (token: string) => request<Me>('/auth/me', authed(token));
+
+export const changePassword = (token: string, currentPassword: string, newPassword: string) =>
+  requestNoBody('/auth/change-password', authed(token, json('POST', { current_password: currentPassword, new_password: newPassword })));
+
+const adminUser = (id: number) => `/admin/users/${id}`;
+
+export const adminListUsers = (token: string, q = '', limit = 50, offset = 0) => {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (q.trim()) params.set('q', q.trim());
+  return request<AdminUserList>(`/admin/users?${params}`, authed(token));
+};
+export const adminSetActive = (token: string, id: number, active: boolean) =>
+  request<AdminUser>(`${adminUser(id)}/${active ? 'activate' : 'deactivate'}`, authed(token, { method: 'POST' }));
+export const adminSetAdmin = (token: string, id: number, admin: boolean) =>
+  request<AdminUser>(`${adminUser(id)}/${admin ? 'make-admin' : 'remove-admin'}`, authed(token, { method: 'POST' }));
+export const adminResetPassword = (token: string, id: number) =>
+  request<{ user_id: number; temporary_password: string }>(`${adminUser(id)}/reset-password`, authed(token, { method: 'POST' }));
+export const adminDeleteUser = (token: string, id: number) =>
+  requestNoBody(adminUser(id), authed(token, { method: 'DELETE' }));
