@@ -227,44 +227,20 @@ class TestDockerfileTargets:
         assert "web-builder" in section.group()
 
 
-class TestDatabaseInitScript:
-    """Test database initialization script."""
+class TestDatabaseSchema:
+    """The application owns the schema; a SQL init script with different tables broke sign-up on a fresh Postgres."""
 
-    def test_init_script_exists(self) -> None:
-        """Verify database init script exists."""
-        init_script = Path(__file__).parent.parent / "docker" / "init-db.sql"
-        assert init_script.exists(), "docker/init-db.sql not found"
+    def test_no_sql_init_script_is_mounted_or_shipped(self) -> None:
+        assert not (Path(__file__).parent.parent / "docker" / "init-db.sql").exists()
+        compose = (Path(__file__).parent.parent / "docker-compose.yml").read_text()
+        assert "docker-entrypoint-initdb.d" not in compose
 
-    def test_init_script_creates_tables(self) -> None:
-        """Verify init script creates required tables."""
-        init_script = Path(__file__).parent.parent / "docker" / "init-db.sql"
-        with open(init_script) as f:
-            content = f.read()
+    def test_startup_creates_the_tables_from_the_models(self) -> None:
+        import inspect
 
-        required_tables = ["users", "transcription_jobs", "api_keys"]
+        from vtt_server import database
+        from vtt_server.models import User
 
-        for table in required_tables:
-            # Use regex to match CREATE TABLE statements for this specific table
-            # Pattern matches: CREATE TABLE [IF NOT EXISTS] [schema.]table_name
-            pattern = rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\w+\.)?{re.escape(table)}\b"
-            assert re.search(pattern, content, re.IGNORECASE), f"CREATE TABLE statement not found for table '{table}'"
+        assert {"users", "transcription_jobs", "api_keys"} <= set(User.metadata.tables)
 
-    def test_init_script_creates_indices(self) -> None:
-        """Verify init script creates database indices."""
-        init_script = Path(__file__).parent.parent / "docker" / "init-db.sql"
-        with open(init_script) as f:
-            content = f.read()
-
-        assert "CREATE INDEX" in content, "No indices created"
-
-    def test_init_script_has_no_default_user(self) -> None:
-        """Verify init script does NOT create default admin user (security requirement)."""
-        init_script = Path(__file__).parent.parent / "docker" / "init-db.sql"
-        with open(init_script) as f:
-            content = f.read()
-
-        # Security: No default admin user should be created
-        assert "INSERT INTO users" not in content, "Default user should not be created for security"
-        assert "Create users via the API" in content or "manually via psql" in content, (
-            "Should have user creation instructions"
-        )
+        assert "create_all" in inspect.getsource(database.init_db)
