@@ -24,6 +24,21 @@ services:
     networks:
       - vtt-network
 
+  # Local SMTP relay (Postfix). Only reachable from the other containers; it delivers mail itself, or through
+  # RELAYHOST if you set one. Without SPF/DKIM for your domain, expect direct delivery to land in spam folders.
+  mail:
+    image: boky/postfix:latest
+    container_name: vtt-transcribe-mail
+    restart: unless-stopped
+    environment:
+      ALLOWED_SENDER_DOMAINS: ${VTT_MAIL_DOMAIN:-localhost}
+      HOSTNAME: ${VTT_MAIL_HOSTNAME:-mail.${VTT_MAIL_DOMAIN:-localhost}}
+      RELAYHOST: ${RELAYHOST:-}
+      RELAYHOST_USERNAME: ${RELAYHOST_USERNAME:-}
+      RELAYHOST_PASSWORD: ${RELAYHOST_PASSWORD:-}
+    networks:
+      - vtt-network
+
   # FastAPI Backend API
   api:
     build:
@@ -58,13 +73,14 @@ services:
       VTT_DATA_DIR: /app/jobs
       VTT_DEFAULT_RETENTION_DAYS: ${VTT_DEFAULT_RETENTION_DAYS:-7}
       VTT_PUBLIC_URL: ${VTT_PUBLIC_URL:-}
-      # Email (optional; nothing is sent while SMTP_HOST is empty)
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
+      # Email: by default through the bundled `mail` relay below. Point SMTP_HOST at your own server to use that
+      # instead (and set SMTP_HOST= empty to switch email off).
+      SMTP_HOST: ${SMTP_HOST-mail}
+      SMTP_PORT: ${SMTP_PORT:-25}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      SMTP_FROM: ${SMTP_FROM:-noreply@${VTT_MAIL_DOMAIN:-localhost}}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
 
       # Storage
       UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
@@ -82,6 +98,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mail:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

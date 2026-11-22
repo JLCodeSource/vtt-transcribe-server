@@ -70,7 +70,7 @@ parameter, so tests inject the clock. Running or queued jobs are never swept.
 
 `vtt_server/mailer.py` (SMTP via env, plain text + HTML, sent from a worker thread, failures logged) sends the welcome mail on
 registration and a ready/failed mail when a job ends (not on cancel), to owners who have not opted out
-(`users.notify_job_ready`). Without `SMTP_HOST` it logs "skipped". Tests swap `mailer.transport_factory` for a fake. Email
+(`users.notify_job_ready`). Without `SMTP_HOST` it logs "skipped"; docker compose ships a Postfix `mail` service and points `SMTP_HOST` at it. Tests swap `mailer.transport_factory` for a fake. Email
 verification is deliberately not implemented. `routes/profile.py` (`/api/profile`): retention default, opt-out, default options,
 OpenAI key (the existing encrypted `api_keys` table; only a `****abcd` hint is returned), and self-service account deletion
 (password required; removes jobs, audio and keys). When an openai job or translation has no key it falls back to the stored one.
