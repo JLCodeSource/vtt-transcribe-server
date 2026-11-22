@@ -26,8 +26,8 @@ def _jobs() -> dict[str, dict[str, Any]]:
 
 # Internals that are bulky, secret or not JSON-serialisable; speaker data has its own endpoints.
 _HIDDEN = {
-    "progress_updates", "segments", "speaker_names", "audio_path", "raw_transcript", "user_id", "secret", "queue_seq",
-    "cancel_requested",
+    "progress_updates", "segments", "speaker_names", "translations", "diarizations", "dia_seq", "schema",
+    "audio_path", "raw_transcript", "user_id", "secret", "queue_seq", "cancel_requested",
 }  # fmt: skip
 
 

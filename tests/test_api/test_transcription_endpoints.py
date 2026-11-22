@@ -465,7 +465,8 @@ class TestTranscribeWithTranslation:
 
             # Verify translation was called and result includes translation
             assert jobs[job_id]["status"] == "completed"
-            assert "Texto español" in jobs[job_id]["result"]
+            assert "English text" in jobs[job_id]["result"]  # the original is kept as the result...
+            assert jobs[job_id]["translations"]["Spanish"]["texts"] == ["Texto español"]  # ...and the translation added
             mock_at_instance.translate_transcript.assert_called_once()
 
 
