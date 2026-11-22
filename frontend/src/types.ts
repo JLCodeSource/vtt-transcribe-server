@@ -64,6 +64,8 @@ export interface SegmentView {
 export interface SegmentsResponse {
   job_id: string;
   translated_to: string | null;
+  /** the engine the job ran with; local jobs translate on the server and need no API key */
+  engine?: string;
   speakers: SpeakerInfo[];
   segments: SegmentView[];
 }

@@ -37,7 +37,7 @@ export const splitSpeaker = (id: string, speakerId: string, segmentIndices: numb
 export const rediarize = (id: string, numSpeakers: number | null) =>
   request<SegmentsResponse>(`${job(id)}/rediarize`, json('POST', { num_speakers: numSpeakers }));
 
-export const translateJob = (id: string, targetLanguage: string, apiKey: string) =>
+export const translateJob = (id: string, targetLanguage: string, apiKey: string | null) =>
   request<SegmentsResponse>(`${job(id)}/translate`, json('POST', { target_language: targetLanguage, api_key: apiKey }));
 
 /** Playable URL for a short sample of a speaker (an <audio src>). */

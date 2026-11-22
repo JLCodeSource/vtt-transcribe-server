@@ -98,6 +98,7 @@ def _view(job: dict[str, Any]) -> dict[str, Any]:
     return {
         "job_id": job["job_id"],
         "translated_to": job.get("translated_to"),
+        "engine": job.get("engine") or "openai",
         "speakers": speakers.summarize(job["segments"], names),
         "segments": segments,
     }
