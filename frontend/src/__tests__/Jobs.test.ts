@@ -143,6 +143,26 @@ const profile = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+describe('Profile page: translation language', () => {
+  beforeEach(() => vi.stubGlobal('fetch', vi.fn()));
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('is a dropdown that keeps an earlier free-text choice', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      ok({
+        username: 'u', email: 'u@example.com', retention_mode: 'default', retention_days: null, notify_job_ready: true,
+        default_options: { translate_to: 'Esperanto' }, platform_retention: { mode: 'hold', days: 7 },
+        has_openai_key: false, openai_key_hint: null, email_enabled: false, oauth_provider: null,
+      }),
+    );
+    render(Profile, { token: 't' });
+    const select = (await screen.findByLabelText('Default translation language')) as HTMLSelectElement;
+    expect(select.tagName).toBe('SELECT');
+    expect(select.value).toBe('Esperanto');
+    expect([...select.options].map((o) => o.value)).toContain('Spanish');
+  });
+});
+
 describe('Profile page', () => {
   beforeEach(() => vi.stubGlobal('fetch', vi.fn()));
   afterEach(() => vi.unstubAllGlobals());

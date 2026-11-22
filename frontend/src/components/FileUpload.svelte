@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { authHeaders, fetchEngines, fetchProfile } from '../api';
+  import { languageChoices } from '../languages';
   import type { UploadOptions, TranscriptionJob, EnginesResponse } from '../types';
 
   interface Props {
@@ -329,13 +330,10 @@
 
         <label class="field">
           <span>Translate to (optional)</span>
-          <input
-            type="text"
-            bind:value={options.translateTo}
-            placeholder="e.g. Spanish"
-            disabled={isUploading}
-            aria-label="Translate to"
-          />
+          <select bind:value={options.translateTo} disabled={isUploading} aria-label="Translate to">
+            <option value="">No translation</option>
+            {#each languageChoices(options.translateTo ?? '') as l (l)}<option value={l}>{l}</option>{/each}
+          </select>
           <span class="help">Needs an OpenAI API key (unless you use the local engine)</span>
         </label>
 
