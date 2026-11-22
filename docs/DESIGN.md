@@ -26,19 +26,42 @@ restart **[done]**. Per job:
 | Field | Meaning |
 |-------|---------|
 | `engine`, `diarize`, `diarizer`, `num_speakers`, `translate_to` | options chosen at creation |
-| `raw_transcript` | engine output before speaker labels (lets us re-diarize without re-transcribing) |
-| `segments` | `[{start, end, text, speaker: "SPEAKER_00"\|null, translation?}]`, the source of truth |
-| `speaker_names` | `{SPEAKER_00: "Alice"}`; blank/absent = default `Speaker 1` |
-| `result` | derived: `[HH:MM:SS - HH:MM:SS] Name: text` (translated text once translated); used by the websocket |
+| `raw_transcript` | engine output before speaker labels |
+| `segments` | the **immutable original**: `[{start, end, text}]` in the spoken language. Never edited, always exportable |
+| `translations` | `{language: {texts: [...], engine, source, created_at}}`: one entry per language, added by translating; the original is untouched |
+| `diarizations`, `active_diarization` | `[{id, label, num_speakers, method, created_at, turns, labels, names}]`: one entry per diarization run. `turns` are the raw diarizer output, `labels` the speaker id per segment (what merge/split edit), `names` the display names |
+| `result` | derived: the original text with the active diarization's names (`[HH:MM:SS - HH:MM:SS] Name: text`); used by the websocket and listings, never a translation |
 | `audio_path` | stored upload under `VTT_DATA_DIR/<job_id>/`, kept for sample clips + re-diarization, removed by `DELETE` or retention |
 | `status`, `step`, `progress`, `message`, `queue_position` | queue state: `step` is queued/detecting/transcribing/diarizing/translating/done; `progress` is 0..1 overall |
 | `retention_mode`, `retention_days`, `expires_at`, `downloaded_at` | retention policy and the computed deletion time |
 | `secret` | request-supplied API key, encrypted with `ENCRYPTION_KEY`, kept only until the job ends (never returned) |
 
-Speaker ids are stable (`SPEAKER_NN` from the diarizer). Names are a presentation layer: merge/split edit `segments`;
-rename edits `speaker_names`. Every export renders through `speakers.display_name`, so a rename shows up everywhere as
-`Name: text` without re-running anything. Translation never sends speaker names to the model (only `[ts] text` lines, zipped
-back by index), so rename/merge before or after translating cost nothing.
+### Versions: nothing is dropped
+
+Re-rendering costs far more than storage, so every rendering is kept (`vtt_server/versions.py`):
+
+- **Original text** is stored once and never changes. Every export can ask for it.
+- **Translations** are per language. Translating to a new language *adds* an entry; a language that exists is returned as it
+  is unless `replace` is set. Any one can be deleted; the original and the others stay.
+- **Diarizations** are per run. `POST rediarize` (any speaker count, or automatic) *adds* a version and makes it active; the
+  old ones remain. Rename, merge and split edit only the **active** version's `labels` / `names`; switching the active version
+  is free; versions can be renamed and deleted (never the last one). Speaker sample clips and default exports follow the
+  active version, and `turns` are kept so a version never needs the model again.
+- **Exports and views** pick the pair explicitly: `language` (`original` or a stored translation) and `diarization` (an id;
+  default the active one). `bilingual=true` puts the original and the translation in one file (two lines per segment; two lines
+  per cue in srt/vtt; both fields in json).
+- **Retention and deletion** act on the job, so every version goes together. Everything lives in the one job row (JSON), so
+  persistence, expiry and `DELETE` need no special cases.
+
+Speaker ids are stable within a version (`SPEAKER_NN` from the diarizer). Names are a presentation layer: every export renders
+through `speakers.display_name`, so a rename shows up everywhere as `Name: text`. Translation never sends speaker names to the
+model (only `[ts] text` lines, zipped back by index), so rename/merge/re-run before or after translating cost nothing.
+
+**Migration.** Releases before 0.2.0 stored speaker, translation and names inside each segment and let a translation replace the
+result. On startup (and on first use of a job already in memory) such a job is converted in place and written back: its single
+translation becomes one `translations` entry, its speaker state becomes diarization `d1` (raw turns were not kept, so `turns`
+is empty; the labels are the record), and `result` is rebuilt from the original text. The conversion is idempotent and loses
+nothing.
 
 ### Queue
 
@@ -87,15 +110,18 @@ All under `/api`, JSON unless noted, signed-in users only; jobs are scoped to th
 | `GET /jobs[?all=true]` | the caller's jobs newest first with `step`, `progress`, `queue_position`, `expires_at` (`all` = administrators) **[done]** |
 | `POST /jobs/{id}/cancel` / `PUT /jobs/{id}/retention` `{mode, days}` | cancel a queued/running job; change keep/delete/hold **[done]** |
 | `GET /jobs/{id}` | status + options (no bulky fields) **[done]**; `WS /ws/jobs/{id}` pushes progress/result **[done]** |
-| `GET /jobs/{id}/segments` | structured transcript: segments (`text`, `translation`, `speaker_id`, display `speaker`) + speaker summaries **[done]** |
-| `POST /jobs/{id}/translate` `{target_language, api_key}` | adds `translation` per segment via core's `AudioTranslator`; 502 if the model returns a different line count **[done]** |
+| `GET /jobs/{id}/versions` | what exists: the original (language, segment count), every translation, every diarization (`id`, `label`, `speakers`, `created_at`, `active`) **[done]** |
+| `GET /jobs/{id}/segments[?language=&diarization=]` | structured transcript for one pair: segments (`text` original, `translation` for `language`, `speaker_id`, display `speaker`) + speaker summaries. `language` omitted = latest translation, `original` = none; `diarization` omitted = active **[done]** |
+| `POST /jobs/{id}/translate` `{target_language, api_key, engine, replace}` | **adds** a language version (core's `AudioTranslator` or the local model); an existing language is returned (`existing: true`) unless `replace`; 502 if the model returns a different line count **[done]** |
+| `DELETE /jobs/{id}/translations/{language}` | delete one translation (never the original) **[done]** |
+| `PUT /jobs/{id}/diarizations/active` `{id}` / `PUT /jobs/{id}/diarizations/{id}` `{label}` / `DELETE /jobs/{id}/diarizations/{id}` | switch the active version / name a version / delete one (not the last) **[done]** |
 | `GET /jobs/{id}/speakers` | per speaker: `id`, `name`, `display_name`, `seconds`, `segment_count`, `sample_text`, up to 3 `samples` (longest turns, capped 8 s) **[done]** |
 | `GET /jobs/{id}/speakers/{sid}/clip[?start&end]` | WAV excerpt cut from the stored audio with ffmpeg (<= 15 s); plain `<audio src>` target **[done]** |
 | `PUT /jobs/{id}/speakers/{sid}` `{name}` / `PUT .../speakers/names` `{names}` | rename one / many; blank clears **[done]** |
 | `POST /jobs/{id}/speakers/merge` `{source_ids, target_id}` | fold voices that are one person; target keeps its name **[done]** |
 | `POST /jobs/{id}/speakers/{sid}/split` `{segment_indices}` | move the picked lines to a new speaker (`new_speaker_id`) **[done]** |
-| `POST /jobs/{id}/rediarize` `{num_speakers, diarizer}` | re-run diarization on stored audio (the automatic "wrong count" fix; resets names/merges) **[done]** |
-| `GET /jobs/{id}/download?format=txt\|vtt\|srt\|json&translated=` | exports with `Name: text` (VTT uses `<v Name>`) **[done]** |
+| `POST /jobs/{id}/rediarize` `{num_speakers}` | run diarization on the stored audio again: **adds** a version (`new_diarization`) and activates it; the others are kept **[done]** |
+| `GET /jobs/{id}/download?format=txt\|vtt\|srt\|json&language=&diarization=&bilingual=` | export one chosen pair with `Name: text` (VTT uses `<v Name>`); `bilingual=true` = original and translation together; `translated=true` is the old "latest translation" flag **[done]** |
 | `DELETE /jobs/{id}` | forget job + delete audio **[done]** |
 
 Existing `/detect-language` and `/translate` (raw text) stay as they were. `user/jobs/*` history routes are unchanged.

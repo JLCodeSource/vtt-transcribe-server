@@ -155,6 +155,19 @@ docker run --rm -v "$PWD":/w -w /w node:22-slim sh scripts/build_ui.sh      # we
 docker run --rm -v "$PWD":/w -w /w python:3.12-slim bash -c 'pip install -q uv && uv build'   # dist/*.whl and *.tar.gz
 ```
 
+## Versions: nothing is thrown away
+
+The original-language text of every job is stored and always exportable, whether or not it is translated. On top of it the
+server keeps **every translation** (one per language: choosing another language adds a version instead of replacing the
+current one) and **every speaker-identification run** (re-running with a different number of speakers adds a version; merging,
+splitting and renaming edit only the version you are looking at; you can switch between versions at any time). In the web app
+the transcript view has a language switcher (Original, each stored translation, "Add language"), a speaker-version selector with
+"Re-run speaker identification" (automatic or 1 to 8 speakers), a side-by-side original/translation view, and downloads of the
+exact combination you are looking at, including a bilingual file with both languages. Deleting a version asks first and never
+touches the others; the original text cannot be deleted, and the last speaker version stays. Retention covers all versions of a
+job together. API: `GET /api/jobs/{id}/versions`, and `language=` / `diarization=` on the segments, speakers and download
+endpoints (see [docs/DESIGN.md](docs/DESIGN.md)). Jobs created by earlier releases are upgraded automatically at startup.
+
 ## Job queue
 
 Every upload joins a queue; one worker runs jobs strictly one at a time, in order. After submitting, the UI opens the **Jobs**
