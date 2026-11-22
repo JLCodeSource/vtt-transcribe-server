@@ -154,6 +154,12 @@ def test_api_only_build_is_possible_on_purpose(tmp_path):
         assert "vtt_server/static/index.html" not in zf.namelist()
 
 
+def _pyproject_version() -> str:
+    import tomllib
+
+    return tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+
+
 def test_health_reports_the_server_version_and_the_core_version():
     from fastapi.testclient import TestClient
 
@@ -163,7 +169,7 @@ def test_health_reports_the_server_version_and_the_core_version():
     data = TestClient(app).get("/health").json()
     assert data["version"] == __version__
     assert data["core_version"]
-    assert __version__ == "0.2.1"
+    assert __version__ == _pyproject_version()  # the packaged version is the one in pyproject.toml
 
 
 def test_release_notes_come_from_the_changelog():
@@ -174,7 +180,8 @@ def test_release_notes_come_from_the_changelog():
     assert module.section(changelog, "0.2.0") == "- new"
     assert module.section(changelog, "0.1.0") == "First.\n- a"
     assert module.section(changelog, "0.3.0") is None
-    assert module.section((ROOT / "docs" / "CHANGELOG.md").read_text(), "0.2.1")  # the version being released has notes
+    notes = module.section((ROOT / "docs" / "CHANGELOG.md").read_text(), _pyproject_version())
+    assert notes  # the version being released has notes
 
 
 def test_frontend_nginx_leaves_the_upload_limit_to_the_api():
