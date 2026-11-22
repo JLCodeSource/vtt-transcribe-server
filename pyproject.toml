@@ -1,6 +1,6 @@
 [project]
 name = "vtt-transcribe-server"
-version = "0.2.1"
+version = "0.2.2"
 description = "FastAPI server (users, OAuth, DB, job API) and web app built on the vtt-transcribe transcription package"
 readme = "README.md"
 requires-python = ">=3.11"

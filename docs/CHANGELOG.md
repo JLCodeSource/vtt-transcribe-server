@@ -2,6 +2,15 @@
 
 All notable changes to vtt-transcribe-server. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.2.2
+
+- **Fixed:** sign-up on a fresh PostgreSQL database. The Docker Compose setup shipped an SQL init script whose tables did not
+  match the app, so the first registration failed. The script is gone and the app creates its own schema (SQLite is unaffected).
+- Dependency updates: Python and frontend packages (including jsdom 31, dnspython 2.9.2), the Node 26 base image for the
+  frontend build, and the GitHub Actions used by CI. The Dependabot config no longer proposes bcrypt 5, TypeScript 7 or newer
+  Python base images, which break the build.
+- Tests: the queue tests no longer depend on timing, and the browser end-to-end specs were repaired and gained a versions spec.
+
 ## 0.2.1
 
 - A speaker-identification version now says what was asked for and what was found: re-running with 3 speakers on a recording
