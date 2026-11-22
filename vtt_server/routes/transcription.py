@@ -31,7 +31,16 @@ from vtt_server.engines import (
     make_local_translate_fn,
     validate_engine,
 )
-from vtt_server.jobqueue import JobCancelled, checkpoint, next_seq, queue, set_step, with_progress
+from vtt_server.jobqueue import (
+    JobCancelled,
+    attach_progress,
+    checkpoint,
+    next_seq,
+    progress_callback,
+    queue,
+    set_step,
+    with_progress,
+)
 from vtt_server.jobqueue import queue as job_queue  # noqa: F401
 from vtt_server.jobstore import store
 from vtt_server.models import User
@@ -468,9 +477,16 @@ async def create_diarization_job(
     return result
 
 
-def run_diarizer(audio_path: Path, num_speakers: int | None) -> list[tuple[float, float, str]]:
+_step_cb = progress_callback
+
+
+def run_diarizer(
+    audio_path: Path, num_speakers: int | None, progress: Callable[[float, str | None], None] | None = None
+) -> list[tuple[float, float, str]]:
     """Blocking: run sherpa diarization over a file (call via ``asyncio.to_thread``)."""
     backend = build_diarizer(num_speakers=num_speakers)
+    if progress is not None:
+        backend.progress_callback = progress  # core >= 0.6.2: 0.0 at start, 1.0 at finish
     return backend.diarize_audio(audio_path)
 
 
@@ -545,7 +561,7 @@ async def _process_diarization(
         audio_path = _audio_for(job, content, filename)
 
         _emit_progress(job_id, "Processing audio for speaker segments", "diarization")
-        turns = await asyncio.to_thread(run_diarizer, audio_path, num_speakers)
+        turns = await asyncio.to_thread(run_diarizer, audio_path, num_speakers, _step_cb(job, "diarizing"))
         checkpoint(job)
 
         set_segments(job, speakers.turns_to_segments(turns))
@@ -603,6 +619,7 @@ async def _process_transcription(
         # Transcribe audio (fine-grained progress when the core reports it, step-level otherwise)
         set_step(job, "transcribing", "Transcribing audio")
         _emit_progress(job_id, "Transcribing audio", "info")
+        attach_progress(transcriber, job, "transcribing")  # core >= 0.6.2: per-segment fractions
         result = await asyncio.to_thread(with_progress(transcriber.transcribe, job, "transcribing"), audio_path)
         checkpoint(job)
         _emit_progress(job_id, "Transcription complete", "info")
@@ -611,7 +628,7 @@ async def _process_transcription(
         if diarize:
             set_step(job, "diarizing", "Identifying speakers")
             _emit_progress(job_id, "Identifying speakers", "diarization")
-            turns = await asyncio.to_thread(run_diarizer, audio_path, num_speakers)
+            turns = await asyncio.to_thread(run_diarizer, audio_path, num_speakers, _step_cb(job, "diarizing"))
             checkpoint(job)
             result = label_transcript(result, turns)
             _emit_progress(job_id, "Speaker identification complete", "diarization")
@@ -661,11 +678,17 @@ def make_transcriber(engine: str, api_key: str | None) -> Any:
     return make_local_transcriber() if engine == "local" else VideoTranscriber(api_key)
 
 
-def make_translate_fn(engine: str, api_key: str | None, target: str, source: str | None) -> Callable[[str], str]:
+def make_translate_fn(
+    engine: str,
+    api_key: str | None,
+    target: str,
+    source: str | None,
+    progress: Callable[[float, str | None], None] | None = None,
+) -> Callable[[str], str]:
     """``transcript -> translated transcript`` (keeps ``[timestamp]`` lines) for the job's engine."""
     validate_engine(engine, api_key)
     if engine == "local":
-        return make_local_translate_fn(target, source)
+        return make_local_translate_fn(target, source, progress)
     translator = AudioTranslator(api_key)
     return lambda text: translator.translate_transcript(text, target, preserve_timestamps=True)
 
@@ -686,7 +709,9 @@ async def translate_job_segments(
     before *or* after translating without redoing it. ``engine=local`` translates on-box and needs no key.
     """
     engine = engine or job.get("engine") or "openai"
-    translate = make_translate_fn(engine, api_key, target_language, job.get("detected_language"))
+    translate = make_translate_fn(
+        engine, api_key, target_language, job.get("detected_language"), progress_callback(job, "translating")
+    )
     segments = job.get("segments")
     if not segments:  # unstructured result: translate it verbatim
         job["result"] = await asyncio.to_thread(translate, job["result"])

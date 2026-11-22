@@ -28,7 +28,10 @@ if env_path.exists():
 def _no_job_persistence():
     """Job persistence and the queue worker are covered by their own tests; keep other tests off the real database."""
     from vtt_server.jobstore import store
+    from vtt_server.routes.transcription import jobs
 
+    for job_id in [k for k, j in jobs.items() if isinstance(j, dict) and j.get("status") in {"pending", "processing"}]:
+        del jobs[job_id]  # a waiting job left behind by another test would run first in the FIFO queue
     store.enabled = False
     store.session_factory = None
     yield

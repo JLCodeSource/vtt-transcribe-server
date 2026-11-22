@@ -65,11 +65,15 @@ def make_local_transcriber() -> Any:
     return LocalTranscriber(model=os.environ.get("VTT_LOCAL_MODEL") or None)
 
 
-def make_local_translate_fn(target_language: str, source_language: str | None) -> Callable[[str], str]:
+def make_local_translate_fn(
+    target_language: str, source_language: str | None, progress: Callable[[float, str | None], None] | None = None
+) -> Callable[[str], str]:
     """``transcript -> translated transcript`` on-box (core's ``LocalTextTranslator``, M2M100)."""
     from vtt_transcribe.local_translate import LocalTextTranslator
 
     translator = LocalTextTranslator(source_language)
+    if progress is not None:
+        translator.progress_callback = progress  # core >= 0.6.2
     return lambda text: translator.translate_text(text, target_language)
 
 

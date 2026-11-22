@@ -176,7 +176,7 @@ class TestPipeline:
                 time.sleep(0.05)
         assert seg.status_code == 200
         assert [s["id"] for s in seg.json()["speakers"]] == ["SPEAKER_00", "SPEAKER_01"]
-        assert dia.call_args.args[-1] == 2
+        assert dia.call_args.args[1] == 2
         assert client.delete(f"/api/jobs/{job_id}").status_code == 204
 
     def test_pipeline_labels_and_stores_segments(self):
