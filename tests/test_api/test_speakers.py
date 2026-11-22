@@ -2,7 +2,6 @@
 
 import asyncio
 import io
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -152,7 +151,7 @@ class TestSpeakerEndpoints:
 
 
 class TestPipeline:
-    def test_transcribe_with_sherpa_diarization_needs_no_token(self, client):
+    def test_transcribe_with_sherpa_diarization_needs_no_token(self, client, inline_queue):
         with (
             patch("vtt_server.routes.transcription.VideoTranscriber") as vt,
             patch(
@@ -168,11 +167,7 @@ class TestPipeline:
             )
             assert r.status_code == 200
             job_id = r.json()["job_id"]
-            for _ in range(400):  # the job runs as a background task; wait for it instead of racing it
-                seg = client.get(f"/api/jobs/{job_id}/speakers")
-                if seg.status_code != 409:
-                    break
-                time.sleep(0.05)
+            seg = client.get(f"/api/jobs/{job_id}/speakers")  # the queue ran the job before the submit returned
         assert seg.status_code == 200
         assert [s["id"] for s in seg.json()["speakers"]] == ["SPEAKER_00", "SPEAKER_01"]
         assert dia.call_args.args[1] == 2
@@ -244,7 +239,7 @@ class TestEngineSeam:
         assert r.status_code == 501
         assert "local" in r.json()["detail"]
 
-    def test_local_engine_runs_without_a_key(self, client):
+    def test_local_engine_runs_without_a_key(self, client, inline_queue):
         with (
             patch("vtt_server.engines.local_engine_available", return_value=True),
             patch("vtt_server.routes.transcription.make_local_transcriber") as lt,
@@ -256,11 +251,7 @@ class TestEngineSeam:
             )
             assert r.status_code == 200
             job_id = r.json()["job_id"]
-            for _ in range(400):
-                got = client.get(f"/api/jobs/{job_id}/segments")
-                if got.status_code != 409:
-                    break
-                time.sleep(0.05)
+            got = client.get(f"/api/jobs/{job_id}/segments")
         assert got.status_code == 200
         assert got.json()["segments"][0]["text"] == "hello"
         client.delete(f"/api/jobs/{job_id}")
