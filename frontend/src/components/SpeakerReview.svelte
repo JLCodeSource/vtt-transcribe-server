@@ -100,11 +100,11 @@
         {#if sp.sample_text}<p class="quote">“{sp.sample_text}”</p>{/if}
         <div class="row">
           {#each sp.samples as s, i (i)}
-            <button type="button" onclick={() => play(sp.id, s.start, s.end)} aria-label="Play sample {i + 1} of {sp.display_name}">
+            <button type="button" class="sm" onclick={() => play(sp.id, s.start, s.end)} aria-label="Play sample {i + 1} of {sp.display_name}">
               ▶ {mm(s.start)}
             </button>
           {/each}
-          <button type="button" onclick={() => startSplit(sp.id)} disabled={busy || sp.segment_count < 2}>
+          <button type="button" class="sm" onclick={() => startSplit(sp.id)} disabled={busy || sp.segment_count < 2}>
             {splitting === sp.id ? 'Cancel split' : 'Split…'}
           </button>
           {#if data.speakers.length > 1}
@@ -114,7 +114,7 @@
                 <option value={o.id}>{o.display_name}</option>
               {/each}
             </select>
-            <button type="button" disabled={busy || !mergeInto[sp.id]} onclick={() => merge(sp.id)}>Merge</button>
+            <button type="button" class="sm" disabled={busy || !mergeInto[sp.id]} onclick={() => merge(sp.id)}>Merge</button>
           {/if}
         </div>
         {#if splitting === sp.id}
@@ -153,16 +153,86 @@
 </section>
 
 <style>
-  .review { display: grid; gap: 0.75rem; }
-  h2 { margin: 0; }
-  .hint, .note { margin: 0; color: var(--text-light, #666); }
-  .note { color: var(--primary-color, #2563eb); }
-  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
-  li { padding: 0.8rem 1rem; border: 1px solid var(--border-color, #ddd); border-radius: 10px; display: grid; gap: 0.5rem; }
-  .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-  .row input[type='text'] { flex: 1 1 12rem; }
-  .meta { color: var(--text-light, #666); font-size: 0.9rem; }
-  .quote { margin: 0; font-style: italic; color: var(--text-light, #666); }
-  .split { display: grid; gap: 0.3rem; max-height: 14rem; overflow-y: auto; }
-  .line { display: flex; gap: 0.5rem; align-items: baseline; }
+  .review {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+  }
+
+  .hint {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+  }
+
+  .note {
+    color: var(--success);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  li {
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .row input[type='text'] {
+    flex: 1 1 12rem;
+    width: auto;
+  }
+
+  .row select {
+    width: auto;
+    min-height: 1.875rem;
+    padding-block: 0.25rem;
+    font-size: var(--text-sm);
+  }
+
+  .meta {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+  }
+
+  .quote {
+    font-style: italic;
+    color: var(--text-muted);
+  }
+
+  .split {
+    display: grid;
+    gap: var(--space-2);
+    max-height: 14rem;
+    overflow-y: auto;
+    padding: var(--space-3);
+    background: var(--surface-2);
+    border-radius: var(--radius);
+  }
+
+  .line {
+    display: flex;
+    gap: var(--space-2);
+    align-items: baseline;
+    font-size: var(--text-sm);
+  }
 </style>

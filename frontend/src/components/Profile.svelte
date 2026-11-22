@@ -10,9 +10,11 @@
 
   const { token, onaccountdeleted }: Props = $props();
 
+  type Section = 'retention' | 'defaults' | 'key' | 'email' | 'password' | 'account' | 'page';
+
   let profile: Profile | null = $state(null);
-  let message = $state('');
-  let error = $state('');
+  // Feedback is shown inside the section that was saved, so it is clear what it refers to.
+  let status: { section: Section; kind: 'success' | 'error'; text: string } | null = $state(null);
 
   let mode = $state('default');
   let days = $state('7');
@@ -38,90 +40,103 @@
     translateTo = p.default_options.translate_to ?? '';
   }
 
-  async function run(fn: () => Promise<void>, done: string) {
-    error = '';
-    message = '';
+  async function run(section: Section, fn: () => Promise<void>, done: string) {
+    status = null;
     try {
       await fn();
-      message = done;
+      if (done) status = { section, kind: 'success', text: done };
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Something went wrong';
+      status = { section, kind: 'error', text: e instanceof Error ? e.message : 'Something went wrong' };
     }
   }
 
-  onMount(() => run(async () => load(await fetchProfile()), ''));
+  onMount(() => run('page', async () => load(await fetchProfile()), ''));
 
   const saveRetention = () =>
-    run(async () => load(await updateProfile({ retention_mode: mode, retention_days: mode === 'hold' ? Number(days) : null })), 'Retention saved');
-  const saveNotify = () => run(async () => load(await updateProfile({ notify_job_ready: notify })), 'Email preference saved');
+    run(
+      'retention',
+      async () => load(await updateProfile({ retention_mode: mode, retention_days: mode === 'hold' ? Number(days) : null })),
+      'Retention saved',
+    );
+  const saveNotify = () => run('email', async () => load(await updateProfile({ notify_job_ready: notify })), 'Email preference saved');
   const saveOptions = () =>
-    run(async () => load(await updateProfile({ default_options: {
-            ...(engine ? { engine } : {}),
-            diarize,
-            ...(diarize && speakers !== 'auto' ? { num_speakers: Number(speakers) } : {}),
-            ...(translateTo.trim() ? { translate_to: translateTo.trim() } : {}),
-          },
-        })), 'Defaults saved');
+    run(
+      'defaults',
+      async () =>
+        load(
+          await updateProfile({
+            default_options: {
+              ...(engine ? { engine } : {}),
+              diarize,
+              ...(diarize && speakers !== 'auto' ? { num_speakers: Number(speakers) } : {}),
+              ...(translateTo.trim() ? { translate_to: translateTo.trim() } : {}),
+            },
+          }),
+        ),
+      'Defaults saved',
+    );
   const saveKey = () =>
-    run(async () => {
-      load(await setOpenAIKey(keyInput));
-      keyInput = '';
-    }, 'API key saved');
-  const removeKey = () => run(async () => load(await removeOpenAIKey()), 'API key removed');
+    run(
+      'key',
+      async () => {
+        load(await setOpenAIKey(keyInput));
+        keyInput = '';
+      },
+      'API key saved',
+    );
+  const removeKey = () => run('key', async () => load(await removeOpenAIKey()), 'API key removed');
   const savePassword = () =>
-    run(async () => {
-      await changePassword(token, currentPassword, newPassword);
-      currentPassword = newPassword = '';
-    }, 'Password changed');
+    run(
+      'password',
+      async () => {
+        await changePassword(token, currentPassword, newPassword);
+        currentPassword = newPassword = '';
+      },
+      'Password changed',
+    );
   const removeAccount = () =>
-    run(async () => {
-      await deleteAccount(deletePassword || null);
-      onaccountdeleted?.();
-    }, '');
+    run(
+      'account',
+      async () => {
+        await deleteAccount(deletePassword || null);
+        onaccountdeleted?.();
+      },
+      '',
+    );
 </script>
 
+{#snippet feedback(section: Section)}
+  {#if status && status.section === section}
+    <p class="notice {status.kind}" role={status.kind === 'error' ? 'alert' : 'status'}>{status.text}</p>
+  {/if}
+{/snippet}
+
 <div class="profile">
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
-  {#if message}<p class="ok" role="status">{message}</p>{/if}
+  {@render feedback('page')}
 
   {#if profile}
     <p class="muted">Signed in as <strong>{profile.username}</strong> ({profile.email})</p>
 
-    <section>
-      <h3>Keep my results</h3>
-      <p class="muted">
-        Default for new jobs; you can change it for each file when you add it, and later on the job. Platform default:
-        {profile.platform_retention.mode === 'hold' ? `${profile.platform_retention.days} days` : profile.platform_retention.mode}.
-      </p>
-      <label>
-        <span>Policy</span>
-        <select bind:value={mode} aria-label="Default retention">
-          <option value="default">Platform default</option>
-          <option value="hold">Keep for a number of days</option>
-          <option value="keep">Keep until I delete it</option>
-          <option value="delete">Delete after I download it</option>
-        </select>
-      </label>
-      {#if mode === 'hold'}
-        <label><span>Days</span><input type="number" min="1" max="3650" bind:value={days} aria-label="Retention days" /></label>
-      {/if}
-      <button type="button" onclick={saveRetention}>Save retention</button>
-    </section>
-
-    <section>
+    <section class="section">
       <h3>Defaults for new jobs</h3>
-      <p class="muted">Each setting here can be changed for an individual file when you add it.</p>
-      <label>
-        <span>Engine</span>
-        <select bind:value={engine} aria-label="Default engine">
-          <option value="">No preference</option>
-          <option value="openai">OpenAI Whisper (API)</option>
-          <option value="local">Local Whisper (no key)</option>
-        </select>
-      </label>
+      <p class="help">These fill in the upload form; each one can still be changed for an individual file when you add it.</p>
+      <div class="form-grid">
+        <label class="field">
+          <span>Engine</span>
+          <select bind:value={engine} aria-label="Default engine">
+            <option value="">No preference</option>
+            <option value="openai">OpenAI Whisper (API)</option>
+            <option value="local">Local Whisper (no key)</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Translate to</span>
+          <input type="text" bind:value={translateTo} placeholder="e.g. Spanish (blank for none)" aria-label="Default translation language" />
+        </label>
+      </div>
       <label class="check"><input type="checkbox" bind:checked={diarize} /> <span>Identify speakers</span></label>
       {#if diarize}
-        <label>
+        <label class="field narrow">
           <span>Number of speakers</span>
           <select bind:value={speakers} aria-label="Default number of speakers">
             <option value="auto">Auto-detect</option>
@@ -129,79 +144,124 @@
           </select>
         </label>
       {/if}
-      <label>
-        <span>Translate to</span>
-        <input type="text" bind:value={translateTo} placeholder="e.g. Spanish (blank for none)" aria-label="Default translation language" />
-      </label>
-      <button type="button" onclick={saveOptions}>Save defaults</button>
+      <div class="section-actions">
+        <button type="button" class="primary" onclick={saveOptions}>Save defaults</button>
+      </div>
+      {@render feedback('defaults')}
     </section>
 
-    <section>
+    <section class="section">
+      <h3>Keep my results</h3>
+      <p class="help">
+        Default for new jobs; you can change it for each file when you add it, and later on the job. Platform default:
+        {profile.platform_retention.mode === 'hold' ? `${profile.platform_retention.days} days` : profile.platform_retention.mode}.
+      </p>
+      <div class="form-grid">
+        <label class="field">
+          <span>Policy</span>
+          <select bind:value={mode} aria-label="Default retention">
+            <option value="default">Platform default</option>
+            <option value="hold">Keep for a number of days</option>
+            <option value="keep">Keep until I delete it</option>
+            <option value="delete">Delete after I download it</option>
+          </select>
+        </label>
+        {#if mode === 'hold'}
+          <label class="field">
+            <span>Days</span>
+            <input type="number" min="1" max="3650" bind:value={days} aria-label="Retention days" />
+          </label>
+        {/if}
+      </div>
+      <div class="section-actions">
+        <button type="button" class="primary" onclick={saveRetention}>Save retention</button>
+      </div>
+      {@render feedback('retention')}
+    </section>
+
+    <section class="section">
       <h3>OpenAI API key</h3>
       {#if profile.has_openai_key}
         <p>Stored key: <code>{profile.openai_key_hint}</code></p>
       {:else}
-        <p class="muted">No key stored. Without one you need to enter a key for each OpenAI job.</p>
+        <p class="help">No key stored. Without one you need to enter a key for each OpenAI job.</p>
       {/if}
-      <label>
+      <label class="field">
         <span>{profile.has_openai_key ? 'Replace key' : 'Key'}</span>
         <input type="password" autocomplete="off" placeholder="sk-..." bind:value={keyInput} aria-label="OpenAI API key" />
       </label>
-      <div class="row">
-        <button type="button" disabled={keyInput.trim().length < 8} onclick={saveKey}>Save key</button>
+      <p class="help">Stored encrypted on the server and used only when a job or translation has no key of its own.</p>
+      <div class="section-actions">
+        <button type="button" class="primary" disabled={keyInput.trim().length < 8} onclick={saveKey}>Save key</button>
         {#if profile.has_openai_key}<button type="button" class="danger" onclick={removeKey}>Remove key</button>{/if}
       </div>
-      <p class="muted">Stored encrypted on the server and used only when a job or translation has no key of its own.</p>
+      {@render feedback('key')}
     </section>
 
-    <section>
+    <section class="section">
       <h3>Email</h3>
       <label class="check">
         <input type="checkbox" bind:checked={notify} onchange={saveNotify} />
         <span>Email me when a job finishes or fails</span>
       </label>
-      {#if !profile.email_enabled}<p class="muted">This server has no email configured, so nothing is sent for now.</p>{/if}
+      {#if !profile.email_enabled}<p class="help">This server has no email configured, so nothing is sent for now.</p>{/if}
+      {@render feedback('email')}
     </section>
 
     {#if !profile.oauth_provider}
-      <section>
+      <section class="section">
         <h3>Password</h3>
-        <label><span>Current password</span><input type="password" autocomplete="current-password" bind:value={currentPassword} /></label>
-        <label><span>New password</span><input type="password" autocomplete="new-password" bind:value={newPassword} /></label>
-        <button type="button" disabled={newPassword.length < 8 || !currentPassword} onclick={savePassword}>Change password</button>
+        <div class="form-grid">
+          <label class="field"><span>Current password</span><input type="password" autocomplete="current-password" bind:value={currentPassword} /></label>
+          <label class="field"><span>New password</span><input type="password" autocomplete="new-password" bind:value={newPassword} /></label>
+        </div>
+        <p class="help">At least 8 characters.</p>
+        <div class="section-actions">
+          <button type="button" class="primary" disabled={newPassword.length < 8 || !currentPassword} onclick={savePassword}>Change password</button>
+        </div>
+        {@render feedback('password')}
       </section>
     {/if}
 
-    <section class="danger-zone">
+    <section class="section danger-zone">
       <h3>Delete account</h3>
-      <p class="muted">Deletes your account, all jobs, results, stored audio and your saved API key. This cannot be undone.</p>
+      <p class="help">Deletes your account, all jobs, results, stored audio and your saved API key. This cannot be undone.</p>
       {#if !confirmDelete}
-        <button type="button" class="danger" onclick={() => (confirmDelete = true)}>Delete my account…</button>
+        <div class="section-actions">
+          <button type="button" class="danger" onclick={() => (confirmDelete = true)}>Delete my account…</button>
+        </div>
       {:else}
         {#if !profile.oauth_provider}
-          <label><span>Confirm with your password</span><input type="password" bind:value={deletePassword} aria-label="Password to confirm" /></label>
+          <label class="field narrow">
+            <span>Confirm with your password</span>
+            <input type="password" bind:value={deletePassword} aria-label="Password to confirm" />
+          </label>
         {/if}
-        <div class="row">
-          <button type="button" class="danger" onclick={removeAccount}>Permanently delete</button>
+        <div class="section-actions">
+          <button type="button" class="danger solid" onclick={removeAccount}>Permanently delete</button>
           <button type="button" onclick={() => (confirmDelete = false)}>Keep my account</button>
         </div>
       {/if}
+      {@render feedback('account')}
     </section>
-  {:else if !error}
+  {:else if !status}
     <p class="muted">Loading…</p>
   {/if}
 </div>
 
 <style>
-  .profile { display: flex; flex-direction: column; gap: 1.5rem; max-width: 640px; margin: 0 auto; }
-  section { border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; }
-  h3 { margin: 0; }
-  label { display: flex; flex-direction: column; gap: 0.25rem; }
-  label.check { flex-direction: row; align-items: center; gap: 0.5rem; }
-  .row { display: flex; gap: 0.5rem; }
-  .muted { color: #6b7280; font-size: 0.875rem; margin: 0; }
-  .error { color: #b91c1c; }
-  .ok { color: #047857; }
-  .danger { color: #b91c1c; }
-  .danger-zone { border-color: #fecaca; }
+  .profile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    max-width: 42rem;
+  }
+
+  .narrow {
+    max-width: 16rem;
+  }
+
+  .notice {
+    margin: 0;
+  }
 </style>

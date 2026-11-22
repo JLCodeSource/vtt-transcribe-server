@@ -57,6 +57,15 @@ describe('uploading several files at once', () => {
     expect(posted).toEqual(['one.mp3', 'two.mp3', 'three.mp3']);
   });
 
+  it('lets the rejected-files notice be dismissed', async () => {
+    const { container } = render(FileUpload, { props: { onuploadstart: () => {} } });
+    await choose(container, [audio('ok.mp3'), new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    await screen.findByRole('alert');
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('list', { name: 'Selected files' }).querySelectorAll('li')).toHaveLength(1);
+  });
+
   it('keeps the valid files and reports the rejected ones', async () => {
     const { container } = render(FileUpload, { props: { onuploadstart: () => {} } });
     await choose(container, [audio('ok.mp3'), new File(['x'], 'notes.txt', { type: 'text/plain' })]);

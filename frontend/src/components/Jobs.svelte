@@ -10,11 +10,13 @@
     focusJobId?: string | null;
     /** poll interval while something is queued or running, ms */
     pollMs?: number;
+    /** empty state: take the user to the upload page */
+    onhome?: () => void;
   }
 
-  const { onopen, focusJobId = null, pollMs = 2000 }: Props = $props();
+  const { onopen, focusJobId = null, pollMs = 2000, onhome }: Props = $props();
 
-  let jobs: JobSummary[] = $state([]);
+  let rawJobs: JobSummary[] = $state([]);
   let queueLength = $state(0);
   let loaded = $state(false);
   let error = $state('');
@@ -37,12 +39,30 @@
     cancelled: 'Cancelled',
   };
 
+  // Running first, then the queue in the order it will run, then finished jobs, newest first.
+  const rank = (j: JobSummary) => (j.status === 'processing' ? 0 : j.status === 'pending' ? 1 : 2);
+  const finishedAt = (j: JobSummary) => Date.parse(j.completed_at ?? j.created_at ?? '') || 0;
+  const jobs = $derived(
+    [...rawJobs].sort((a, b) => {
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      if (rank(a) === 1) return (a.queue_position ?? 1e9) - (b.queue_position ?? 1e9);
+      return finishedAt(b) - finishedAt(a);
+    }),
+  );
+
   const active = (j: JobSummary) => j.status === 'pending' || j.status === 'processing';
   const percent = (j: JobSummary) => Math.round((j.progress ?? 0) * 100);
 
   function stepLabel(j: JobSummary): string {
     if (j.status === 'pending') return j.queue_position ? `Waiting — position ${j.queue_position} in the queue` : 'Waiting in the queue';
     return STEP_LABELS[j.step ?? ''] ?? j.step ?? j.status;
+  }
+
+  /** The progress message, unless it only repeats the step label ("Detecting language — Detecting language"). */
+  function detail(j: JobSummary): string {
+    const message = (j.message ?? '').trim();
+    if (j.status !== 'processing' || !message) return '';
+    return message.toLowerCase() === stepLabel(j).toLowerCase() ? '' : message;
   }
 
   function expiry(j: JobSummary): string {
@@ -56,7 +76,7 @@
   async function refresh() {
     try {
       const list = await fetchJobs();
-      jobs = list.jobs;
+      rawJobs = list.jobs;
       queueLength = list.queue_length;
       error = '';
       loaded = true;
@@ -109,12 +129,16 @@
 </script>
 
 <div class="jobs">
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
+  {#if error}<p class="notice error" role="alert">{error}</p>{/if}
 
   {#if !loaded}
     <p class="muted">Loading…</p>
   {:else if jobs.length === 0}
-    <p class="muted">No jobs yet. Add a file on the Home page and it will show up here.</p>
+    <div class="empty">
+      <h3>Nothing here yet</h3>
+      <p>No jobs yet. Add a file on the Home page and it will show up here.</p>
+      {#if onhome}<button type="button" class="primary" onclick={onhome}>Add files</button>{/if}
+    </div>
   {:else}
     <p class="muted summary">{queueLength} waiting in the queue. Jobs run one at a time, in the order they were added.</p>
     <ul class="job-list">
@@ -122,22 +146,24 @@
         <li class="job" data-testid="job-row" data-status={j.status}>
           <div class="job-head">
             <strong class="name">{j.filename}</strong>
-            <span class="badge {j.status}">{j.status === 'pending' ? 'queued' : j.status}</span>
+            <span class="chip {j.status}">{j.status === 'pending' ? 'queued' : j.status}</span>
           </div>
 
           {#if active(j)}
-            <div class="step">{stepLabel(j)}{j.message && j.status === 'processing' ? ` — ${j.message}` : ''}</div>
+            <div class="step">{stepLabel(j)}{detail(j) ? ` — ${detail(j)}` : ''}</div>
             {#if j.status === 'processing'}
-              <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent(j)} aria-label="Progress">
-                <div class="fill" style="width: {percent(j)}%"></div>
+              <div class="bar-row">
+                <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent(j)} aria-label="Progress">
+                  <span style="width: {percent(j)}%"></span>
+                </div>
+                <span class="pct">{percent(j)}%</span>
               </div>
-              <div class="pct">{percent(j)}%</div>
             {/if}
           {:else if j.status === 'failed'}
             <div class="step failed">{j.error ?? 'The job failed'}</div>
           {/if}
 
-          <div class="meta">{expiry(j)}</div>
+          {#if expiry(j)}<div class="meta">{expiry(j)}</div>{/if}
 
           {#if editing === j.job_id}
             <div class="edit">
@@ -149,24 +175,27 @@
               {#if editMode === 'hold'}
                 <input type="number" min="1" max="3650" bind:value={editDays} aria-label="Days to keep" />
               {/if}
-              <button type="button" onclick={() => saveEdit(j)}>Save</button>
-              <button type="button" class="link" onclick={() => (editing = null)}>Cancel</button>
+              <button type="button" class="primary sm" onclick={() => saveEdit(j)}>Save</button>
+              <button type="button" class="ghost sm" onclick={() => (editing = null)}>Cancel</button>
             </div>
           {/if}
 
           <div class="actions">
             {#if j.status === 'completed'}
-              <button type="button" class="primary" onclick={() => onopen(j)}>Open</button>
-              <a href={downloadUrl(j.job_id, 'txt')} download>TXT</a>
-              <a href={downloadUrl(j.job_id, 'srt')} download>SRT</a>
-              <a href={downloadUrl(j.job_id, 'vtt')} download>VTT</a>
-              <a href={downloadUrl(j.job_id, 'json')} download>JSON</a>
+              <button type="button" class="primary sm" onclick={() => onopen(j)}>Open</button>
+              <span class="btn-group" role="group" aria-label="Download">
+                <a class="btn sm" href={downloadUrl(j.job_id, 'txt')} download>TXT</a>
+                <a class="btn sm" href={downloadUrl(j.job_id, 'srt')} download>SRT</a>
+                <a class="btn sm" href={downloadUrl(j.job_id, 'vtt')} download>VTT</a>
+                <a class="btn sm" href={downloadUrl(j.job_id, 'json')} download>JSON</a>
+              </span>
             {/if}
+            <span class="spacer"></span>
             {#if active(j)}
-              <button type="button" onclick={() => cancel(j)}>Cancel</button>
+              <button type="button" class="sm" onclick={() => cancel(j)}>Cancel</button>
             {:else}
-              <button type="button" class="link" onclick={() => startEdit(j)}>Retention</button>
-              <button type="button" class="danger" onclick={() => remove(j)}>Delete</button>
+              <button type="button" class="sm" onclick={() => startEdit(j)}>Retention</button>
+              <button type="button" class="sm danger" onclick={() => remove(j)}>Delete</button>
             {/if}
           </div>
         </li>
@@ -176,22 +205,96 @@
 </div>
 
 <style>
-  .jobs { display: flex; flex-direction: column; gap: 1rem; }
-  .job-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.75rem; }
-  .job { border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
-  .job-head { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
-  .name { overflow-wrap: anywhere; }
-  .badge { font-size: 0.75rem; padding: 0.15rem 0.6rem; border-radius: 999px; background: #e5e7eb; color: #374151; text-transform: capitalize; }
-  .badge.processing { background: #dbeafe; color: #1e40af; }
-  .badge.completed { background: #d1fae5; color: #065f46; }
-  .badge.failed { background: #fee2e2; color: #991b1b; }
-  .bar { height: 10px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
-  .fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); transition: width 0.4s; }
-  .pct, .meta, .muted { color: #6b7280; font-size: 0.875rem; }
-  .step { color: #374151; }
-  .step.failed, .error { color: #b91c1c; }
-  .actions, .edit { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-  .actions a { font-size: 0.875rem; }
-  .link { background: none; border: none; color: #4f46e5; cursor: pointer; padding: 0; text-decoration: underline; }
-  .danger { color: #b91c1c; }
+  .jobs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .summary {
+    font-size: var(--text-sm);
+  }
+
+  .job-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .job {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .job[data-status='processing'] {
+    border-color: var(--accent);
+  }
+
+  .job-head {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    align-items: center;
+  }
+
+  .name {
+    overflow-wrap: anywhere;
+  }
+
+  .step {
+    font-size: var(--text-sm);
+  }
+
+  .step.failed {
+    color: var(--danger);
+  }
+
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .bar-row .progress {
+    flex: 1;
+  }
+
+  .pct {
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    min-width: 2.75rem;
+    text-align: right;
+  }
+
+  .meta {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .actions,
+  .edit {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+    margin-top: var(--space-1);
+  }
+
+  .edit select,
+  .edit input {
+    width: auto;
+    min-height: 2rem;
+  }
+
+  .spacer {
+    flex: 1;
+  }
 </style>
