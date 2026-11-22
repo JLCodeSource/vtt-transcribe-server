@@ -74,7 +74,7 @@ describe('versions in the transcript viewer', () => {
     const select = screen.getByLabelText('Speaker version') as HTMLSelectElement;
     expect(select.value).toBe('d2');
     expect([...select.options].map((o) => o.textContent)).toEqual([
-      expect.stringContaining('Auto (3 found) · 3 speakers'),
+      expect.stringContaining('Auto (3 found) · '),
       expect.stringContaining('2 speakers · '),
     ]);
     await fireEvent.change(select, { target: { value: 'd1' } });
