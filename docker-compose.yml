@@ -54,6 +54,18 @@ services:
       # CORS
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
       
+      # Jobs: uploaded audio lives here (a named volume, so queued jobs survive a restart)
+      VTT_DATA_DIR: /app/jobs
+      VTT_DEFAULT_RETENTION_DAYS: ${VTT_DEFAULT_RETENTION_DAYS:-7}
+      VTT_PUBLIC_URL: ${VTT_PUBLIC_URL:-}
+      # Email (optional; nothing is sent while SMTP_HOST is empty)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+
       # Storage
       UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
       MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-104857600}
@@ -63,6 +75,7 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-json}
     volumes:
       - upload_data:/app/uploads
+      - job_data:/app/jobs
       - ./logs:/app/logs
     ports:
       - "${API_PORT:-8000}:8000"
@@ -103,6 +116,8 @@ volumes:
   postgres_data:
     driver: local
   upload_data:
+    driver: local
+  job_data:
     driver: local
 
 networks:

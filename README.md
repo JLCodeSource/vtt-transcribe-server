@@ -77,6 +77,20 @@ docker run --rm -v "$PWD/frontend":/w -w /w node:22-slim bash -c 'npm ci && npm 
 The repo is public, so GitHub Actions on standard runners are free. `.github/workflows/frontend-ci.yml` is path-filtered and
 cancels superseded runs. Run the checks above locally first; CI is a safety net, not the first line of testing.
 
+## Job queue
+
+Every upload joins a queue; one worker runs jobs strictly one at a time, in order. After submitting, the UI opens the **Jobs**
+page, which shows each job's queue position and, while it runs, its step (detecting language, transcribing, identifying
+speakers, translating) and a progress percentage. Waiting jobs can be cancelled; a running job stops at its next checkpoint.
+Jobs, results and uploaded audio are stored (database + `VTT_DATA_DIR`), so the queue and finished transcripts survive a
+restart; anything that was waiting or running is re-queued on startup. Run **one** API process: the queue lives inside it.
+
+Results stay downloadable and reviewable until their retention runs out (see the table below). Each user sets a default
+under **Profile**, can override it per file and later per job; the Jobs page shows the expiry date. The Profile page also holds
+your OpenAI key (stored encrypted, shown only as its last four characters, used when a request has none), the email opt-out,
+password change and account deletion. Email is optional: with `SMTP_HOST` set, new users get a welcome email and job owners
+get a "ready / failed" email linking to the job unless they opt out. There is no email verification step.
+
 ## Security
 
 Every `/api` endpoint and the job WebSocket require a signed-in, active user, and each job belongs to the user who
@@ -90,8 +104,14 @@ Uploads are limited to 100 MB. Environment settings (all optional):
 |---|---|---|
 | `VTT_ALLOW_REGISTRATION` | `true` | `false` closes self-service sign-up; create users another way and promote with `python -m vtt_server.manage` |
 | `VTT_LOGIN_RATE_LIMIT` / `VTT_REGISTER_RATE_LIMIT` | `10` / `5` | attempts per client address per 5 minutes before `429` (`0` disables) |
-| `VTT_MAX_ACTIVE_JOBS_PER_USER` | `2` | running jobs per user before `429` (`0` disables) |
-| `VTT_MAX_ACTIVE_JOBS` | `4` | running jobs on the whole server before `503` (`0` disables) |
+| `VTT_MAX_ACTIVE_JOBS_PER_USER` | `10` | queued + running jobs per user before `429` (`0` disables) |
+| `VTT_MAX_ACTIVE_JOBS` | `50` | queued + running jobs on the whole server before `503` (`0` disables) |
+| `VTT_DATA_DIR` | system temp | where uploaded audio is stored; **use a persistent volume** so queued jobs survive a restart |
+| `VTT_DEFAULT_RETENTION_DAYS` | `7` | platform default: finished jobs are kept this many days (users can choose keep / delete / hold N days in their profile, per upload, or later on the job) |
+| `VTT_DELETE_GRACE_MINUTES` / `VTT_DELETE_UNDOWNLOADED_HOURS` | `15` / `24` | policy "delete": removed 15 minutes after the first download, or 24 h after finishing if never downloaded |
+| `VTT_SWEEP_INTERVAL_SECONDS` | `300` | how often expired jobs and their files are deleted |
+| `VTT_PUBLIC_URL` | _(empty)_ | base URL used for links in emails (`<url>/?job=<id>`) |
+| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASSWORD` `SMTP_FROM` `SMTP_STARTTLS` | _(empty)_ / `587` / … / `true` | outgoing email (welcome message, "your job is ready"). Without `SMTP_HOST` nothing is sent and nothing fails. Port 465 uses implicit TLS |
 | `ENVIRONMENT` | `development` | set `production` only when served over HTTPS (it makes session cookies HTTPS-only) |
 
 Before exposing an instance to the internet:
