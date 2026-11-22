@@ -8,14 +8,14 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.usefixtures("fake_auth")
 
 
-def test_file_size_limit_enforcement() -> None:
+def test_file_size_limit_enforcement(monkeypatch) -> None:
     """Test that files exceeding size limits are rejected."""
     from vtt_server.app import app
 
     client = TestClient(app)
 
-    # Create a large file (>100MB)
-    large_content = b"x" * (101 * 1024 * 1024)
+    monkeypatch.setattr("vtt_server.routes.transcription.MAX_FILE_SIZE", 1024)
+    large_content = b"x" * (3 * 1024 * 1024)  # several streaming chunks over the limit
     files = {"file": ("large.mp3", io.BytesIO(large_content), "audio/mpeg")}
     data = {"api_key": "test_key"}
 

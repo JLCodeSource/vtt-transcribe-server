@@ -500,10 +500,10 @@ class TestDetectLanguageErrorHandling:
         assert response.status_code == 400
         assert "Unsupported file type" in response.json()["detail"]
 
-    def test_detect_language_file_too_large(self, client):
+    def test_detect_language_file_too_large(self, client, monkeypatch):
         """Test detect_language with file exceeding size limit."""
-        # Create a file larger than MAX_FILE_SIZE (100MB)
-        large_content = b"x" * (101 * 1024 * 1024)
+        monkeypatch.setattr("vtt_server.routes.transcription.MAX_FILE_SIZE", 1024)
+        large_content = b"x" * (2 * 1024 * 1024)
         files = {"file": ("test.mp3", io.BytesIO(large_content), "audio/mpeg")}
         data = {"api_key": "test-api-key"}
         response = client.post("/api/detect-language", files=files, data=data)

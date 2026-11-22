@@ -177,6 +177,6 @@ def test_release_notes_come_from_the_changelog():
     assert module.section((ROOT / "docs" / "CHANGELOG.md").read_text(), "0.1.0")  # the version being released has notes
 
 
-def test_frontend_nginx_allows_uploads_up_to_the_server_limit():
+def test_frontend_nginx_leaves_the_upload_limit_to_the_api():
     conf = (ROOT / "frontend" / "nginx.conf").read_text()
-    assert "client_max_body_size 100m;" in conf  # nginx's default of 1 MB rejects ordinary audio files
+    assert "client_max_body_size 0;" in conf  # nginx's default of 1 MB rejects ordinary audio; the API enforces the real limit

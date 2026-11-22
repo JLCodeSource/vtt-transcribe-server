@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import AsyncGenerator, Iterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -498,3 +499,42 @@ def test_run_diarizer_hands_the_callback_to_the_backend() -> None:
     with patch.object(tx, "build_diarizer", return_value=backend):
         tx.run_diarizer(MagicMock(), 2, cb)
     assert backend.progress_callback is cb
+
+
+def test_oversized_upload_is_refused_while_streaming_and_leaves_nothing_behind(client: TestClient, db: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("vtt_server.routes.transcription.MAX_FILE_SIZE", 1024)
+    monkeypatch.setattr("vtt_server.routes.transcription.UPLOAD_CHUNK", 256)
+    h = login(client, "alice")
+    refused = client.post("/api/transcribe", headers=h, files={"file": ("big.mp3", b"x" * 5000, "audio/mpeg")}, data={"api_key": "sk-test-key-123"})
+    assert refused.status_code == 413
+    assert "too large" in refused.json()["detail"].lower()
+    assert list(tmp_path.iterdir()) == []  # the partial file and its job folder were removed
+
+
+def test_upload_within_the_limit_is_stored_in_chunks(client: TestClient, db: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("vtt_server.routes.transcription.UPLOAD_CHUNK", 100)
+    h = login(client, "alice")
+    payload = bytes(range(256)) * 10
+    queued = client.post("/api/transcribe", headers=h, files={"file": ("a.mp3", payload, "audio/mpeg")}, data={"api_key": "sk-test-key-123"})
+    assert queued.status_code == 200
+    stored = next(tmp_path.glob("*/input.mp3"))
+    assert stored.read_bytes() == payload
+
+
+def test_max_upload_size_comes_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from vtt_server.routes import transcription
+
+    monkeypatch.setenv("MAX_UPLOAD_SIZE", "12345")
+    assert transcription._configured_max_upload() == 12345
+    monkeypatch.setenv("MAX_UPLOAD_SIZE", "junk")
+    assert transcription._configured_max_upload() == 4 * 1024**3
+    monkeypatch.delenv("MAX_UPLOAD_SIZE")
+    assert transcription._configured_max_upload() == 4 * 1024**3
+
+
+def test_engines_reports_the_upload_limit(client: TestClient, db: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("vtt_server.routes.transcription.MAX_FILE_SIZE", 777)
+    h = login(client, "alice")
+    assert client.get("/api/engines", headers=h).json()["max_upload_bytes"] == 777
