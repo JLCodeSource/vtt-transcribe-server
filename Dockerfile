@@ -78,7 +78,7 @@ CMD ["uvicorn", "vtt_server.app:app", "--host", "0.0.0.0", "--port", "8000"]
 # ============================================================================
 # Frontend build (only used by the api-ui target)
 # ============================================================================
-FROM node:24-alpine AS web-builder
+FROM node:26-alpine AS web-builder
 WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
