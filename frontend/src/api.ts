@@ -1,4 +1,4 @@
-import type { AdminUser, AdminUserList, EnginesResponse, JobList, JobSummary, Me, Profile, RetentionMode, SegmentsResponse } from './types';
+import type { AdminUser, AdminUserList, EnginesResponse, JobList, JobSummary, Me, Profile, RetentionMode, SegmentsResponse, VersionsResponse } from './types';
 
 /** The signed-in user's bearer token. The server requires it on every /api call. */
 let authToken: string | null = null;
@@ -29,7 +29,25 @@ const job = (id: string) => `/api/jobs/${encodeURIComponent(id)}`;
 
 export const fetchEngines = () => request<EnginesResponse>('/api/engines');
 
-export const fetchSegments = (id: string) => request<SegmentsResponse>(`${job(id)}/segments`);
+/** Segments for one (language, diarization) pair; omitted language = the latest translation, omitted diarization = the active one. */
+export const fetchSegments = (id: string, language?: string, diarization?: string | null) => {
+  const q = new URLSearchParams();
+  if (language) q.set('language', language);
+  if (diarization) q.set('diarization', diarization);
+  const qs = q.toString();
+  return request<SegmentsResponse>(`${job(id)}/segments${qs ? `?${qs}` : ''}`);
+};
+
+export const fetchVersions = (id: string) => request<VersionsResponse>(`${job(id)}/versions`);
+
+export const setActiveDiarization = (id: string, diarizationId: string) =>
+  request<SegmentsResponse>(`${job(id)}/diarizations/active`, json('PUT', { id: diarizationId }));
+
+export const deleteDiarization = (id: string, diarizationId: string) =>
+  request<VersionsResponse>(`${job(id)}/diarizations/${encodeURIComponent(diarizationId)}`, { method: 'DELETE' });
+
+export const deleteTranslation = (id: string, language: string) =>
+  request<VersionsResponse>(`${job(id)}/translations/${encodeURIComponent(language)}`, { method: 'DELETE' });
 
 /** Rename several speakers at once: {SPEAKER_00: "Alice"}. A blank name restores "Speaker N". */
 export const renameSpeakers = (id: string, names: Record<string, string>) =>
@@ -44,11 +62,16 @@ export const splitSpeaker = (id: string, speakerId: string, segmentIndices: numb
     json('POST', { segment_indices: segmentIndices })
   );
 
+/** Adds a diarization version (the others are kept) and makes it active. */
 export const rediarize = (id: string, numSpeakers: number | null) =>
-  request<SegmentsResponse>(`${job(id)}/rediarize`, json('POST', { num_speakers: numSpeakers }));
+  request<SegmentsResponse & { new_diarization: string }>(`${job(id)}/rediarize`, json('POST', { num_speakers: numSpeakers }));
 
+/** Adds a language version (the original and the other languages are kept). */
 export const translateJob = (id: string, targetLanguage: string, apiKey: string | null) =>
-  request<SegmentsResponse>(`${job(id)}/translate`, json('POST', { target_language: targetLanguage, api_key: apiKey }));
+  request<SegmentsResponse & { existing?: boolean }>(
+    `${job(id)}/translate`,
+    json('POST', { target_language: targetLanguage, api_key: apiKey })
+  );
 
 /** Playable URL for a short sample of a speaker (an <audio src>). */
 export const clipUrl = (id: string, speakerId: string, start?: number, end?: number) => {
@@ -65,7 +88,19 @@ export async function deleteJob(id: string): Promise<void> {
   await requestNoBody(job(id), { method: 'DELETE', headers: authHeaders() });
 }
 /** Download URL (token in the query string so a plain link works). */
-export const downloadUrl = (id: string, format: 'txt' | 'vtt' | 'srt' | 'json') => withToken(`${job(id)}/download?format=${format}`);
+export type ExportChoice = { language?: string; diarization?: string | null; bilingual?: boolean };
+
+/** Query string for an export of one chosen (language, diarization) combination. */
+export const exportQuery = (format: 'txt' | 'vtt' | 'srt' | 'json', choice: ExportChoice = {}) => {
+  const q = new URLSearchParams({ format });
+  if (choice.language) q.set('language', choice.language);
+  if (choice.diarization) q.set('diarization', choice.diarization);
+  if (choice.bilingual) q.set('bilingual', 'true');
+  return q.toString();
+};
+
+export const downloadUrl = (id: string, format: 'txt' | 'vtt' | 'srt' | 'json', choice: ExportChoice = {}) =>
+  withToken(`${job(id)}/download?${exportQuery(format, choice)}`);
 
 // ---- profile ----
 export const fetchProfile = () => request<Profile>('/api/profile');
