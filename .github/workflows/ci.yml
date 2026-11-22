@@ -1,38 +1,54 @@
-name: CI
+name: Backend CI
+
+# Conservative on purpose: one job, runs only when backend inputs change, cancels superseded runs, has a timeout.
+# Run the same commands locally first (see README); CI is the safety net.
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'vtt_server/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'ruff.toml'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'vtt_server/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'ruff.toml'
+      - '.github/workflows/ci.yml'
 
 jobs:
-  build:
+  backend:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Set up uv (with dependency cache)
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: '3.11'
-
-      - name: Install ffmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          enable-cache: true
+          python-version: '3.12'
 
       - name: Install dependencies
-        run: |
-          make install-diarization
+        run: uv sync --frozen
 
       - name: Lint
-        run: make lint
+        run: uv run ruff check .
 
       - name: Test
-        run: make test
+        run: uv run pytest -q -p no:cacheprovider
