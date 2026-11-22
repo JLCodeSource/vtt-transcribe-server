@@ -236,11 +236,11 @@ class TestDatabaseSchema:
         assert "docker-entrypoint-initdb.d" not in compose
 
     def test_startup_creates_the_tables_from_the_models(self) -> None:
-        from vtt_server.database import Base
-
-        assert {"users", "transcription_jobs", "api_keys"} <= set(Base.metadata.tables)
         import inspect
 
         from vtt_server import database
+        from vtt_server.models import User
+
+        assert {"users", "transcription_jobs", "api_keys"} <= set(User.metadata.tables)
 
         assert "create_all" in inspect.getsource(database.init_db)
