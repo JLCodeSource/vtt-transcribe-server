@@ -100,6 +100,14 @@ def test_default_options_are_validated(client: TestClient) -> None:
     assert client.patch("/api/profile", headers=h, json={"default_options": {"engine": "bogus"}}).status_code == 422
 
 
+def test_default_speakers_and_translation_language(client: TestClient) -> None:
+    h = login(client)
+    ok = client.patch("/api/profile", headers=h, json={"default_options": {"num_speakers": "3", "translate_to": "Spanish"}})
+    assert ok.json()["default_options"] == {"translate_to": "Spanish", "num_speakers": 3}
+    for bad in (0, 9, "many"):
+        assert client.patch("/api/profile", headers=h, json={"default_options": {"num_speakers": bad}}).status_code == 422
+
+
 def test_openai_key_is_stored_encrypted_masked_and_replaceable(
     client: TestClient, db: async_sessionmaker[AsyncSession], caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -38,6 +38,7 @@
         profileHasKey = p.has_openai_key;
         if (p.default_options.engine) options.engine = p.default_options.engine;
         if (p.default_options.diarize !== undefined) options.diarization = p.default_options.diarize;
+        if (p.default_options.num_speakers) options.numSpeakers = String(p.default_options.num_speakers);
         if (p.default_options.translate_to) options.translateTo = p.default_options.translate_to;
       })
       .catch(() => {

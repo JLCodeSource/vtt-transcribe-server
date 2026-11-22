@@ -13,7 +13,8 @@ describe('Navigation', () => {
       render(Navigation);
       expect(screen.getByText('Home')).toBeTruthy();
       expect(screen.getByText('Jobs')).toBeTruthy();
-      expect(screen.getByText('Settings')).toBeTruthy();
+      expect(screen.getByText('Profile')).toBeTruthy();
+      expect(screen.queryByText('Settings')).toBeNull();
       expect(screen.getByText('About')).toBeTruthy();
     });
 
@@ -22,7 +23,7 @@ describe('Navigation', () => {
       const nav = screen.getByRole('navigation');
       expect(nav.textContent).toContain('🏠');
       expect(nav.textContent).toContain('📋');
-      expect(nav.textContent).toContain('⚙️');
+      expect(nav.textContent).toContain('👤');
       expect(nav.textContent).toContain('ℹ️');
     });
 
@@ -35,7 +36,7 @@ describe('Navigation', () => {
     it('renders menu items as buttons', () => {
       render(Navigation);
       const buttons = screen.getAllByRole('button');
-      expect(buttons.length).toBe(5);
+      expect(buttons.length).toBe(4);
     });
   });
 
@@ -52,9 +53,9 @@ describe('Navigation', () => {
       expect(jobsButton?.classList.contains('active')).toBe(true);
     });
 
-    it('marks settings as active when currentPage is settings', () => {
-      render(Navigation, { props: { currentPage: 'settings' } });
-      const settingsButton = screen.getByText('Settings').closest('button');
+    it('marks profile as active when currentPage is profile', () => {
+      render(Navigation, { props: { currentPage: 'profile' } });
+      const settingsButton = screen.getByText('Profile').closest('button');
       expect(settingsButton?.classList.contains('active')).toBe(true);
     });
 
@@ -94,14 +95,14 @@ describe('Navigation', () => {
       expect(onnavigate).toHaveBeenCalledWith('jobs');
     });
 
-    it('calls onnavigate when settings is clicked', async () => {
+    it('calls onnavigate when profile is clicked', async () => {
       const onnavigate = vi.fn();
       render(Navigation, { props: { onnavigate } });
 
-      const settingsButton = screen.getByText('Settings').closest('button');
+      const settingsButton = screen.getByText('Profile').closest('button');
       await fireEvent.click(settingsButton!);
 
-      expect(onnavigate).toHaveBeenCalledWith('settings');
+      expect(onnavigate).toHaveBeenCalledWith('profile');
     });
 
     it('calls onnavigate when about is clicked', async () => {
@@ -144,7 +145,7 @@ describe('Navigation', () => {
     it('has correct menu item count', () => {
       render(Navigation);
       const listItems = screen.getByRole('list').querySelectorAll('li');
-      expect(listItems.length).toBe(5);
+      expect(listItems.length).toBe(4);
     });
 
     it('has home as first menu item', () => {
@@ -159,10 +160,10 @@ describe('Navigation', () => {
       expect(buttons[1].textContent).toContain('Jobs');
     });
 
-    it('has settings as third menu item', () => {
+    it('has profile as third menu item', () => {
       render(Navigation);
       const buttons = screen.getAllByRole('button');
-      expect(buttons[2].textContent).toContain('Settings');
+      expect(buttons[2].textContent).toContain('Profile');
     });
 
     it('has about as fourth menu item', () => {

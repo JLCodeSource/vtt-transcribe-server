@@ -23,6 +23,7 @@ from vtt_server.routes.transcription import purge_user_jobs
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 
 MIN_KEY_LENGTH = 8
+MAX_SPEAKERS = 8
 
 
 class ProfileUpdate(BaseModel):
@@ -98,6 +99,14 @@ def _clean_options(options: dict[str, Any]) -> dict[str, Any]:
         clean["diarize"] = bool(options["diarize"])
     if options.get("translate_to"):
         clean["translate_to"] = str(options["translate_to"])[:64]
+    if options.get("num_speakers") is not None:
+        try:
+            speakers = int(options["num_speakers"])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="num_speakers must be a number between 1 and 8") from None
+        if not 1 <= speakers <= MAX_SPEAKERS:
+            raise HTTPException(status_code=422, detail="num_speakers must be a number between 1 and 8")
+        clean["num_speakers"] = speakers
     return clean
 
 
