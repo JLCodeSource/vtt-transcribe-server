@@ -8,6 +8,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from vtt_server import mailer
 from vtt_server.access import RateLimiter, registration_open
 from vtt_server.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -112,6 +113,7 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)) ->
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
+    mailer.notify_welcome(new_user.email, new_user.username)  # background; skipped when SMTP is not configured
 
     return new_user
 

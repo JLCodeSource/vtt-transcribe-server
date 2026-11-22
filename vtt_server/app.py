@@ -15,7 +15,7 @@ from vtt_transcribe import __version__
 
 from vtt_server import jobqueue
 from vtt_server.database import init_db
-from vtt_server.routes import admin, api_keys, auth, health, jobs, speakers, transcription, websockets
+from vtt_server.routes import admin, api_keys, auth, health, jobs, profile, speakers, transcription, websockets
 
 # OAuth is optional - only available if authlib/httpx are installed
 try:
@@ -119,6 +119,7 @@ app.include_router(api_keys.router)
 app.include_router(jobs.router)
 app.include_router(transcription.router)
 app.include_router(speakers.router)
+app.include_router(profile.router)
 app.include_router(websockets.router)
 
 
