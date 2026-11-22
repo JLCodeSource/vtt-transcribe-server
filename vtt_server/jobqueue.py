@@ -93,6 +93,17 @@ def accepts_progress(fn: Callable[..., Any]) -> bool:
         return False
 
 
+def attach_progress(obj: Any, job: dict[str, Any], step: str) -> Callable[[float, str | None], None]:
+    """Give a core object (transcriber, diarizer, translator) the job's ``progress_callback`` (core >= 0.6.2 reads
+    ``.progress_callback``; older releases just ignore the attribute). Returns the callback."""
+    callback = progress_callback(job, step)
+    try:
+        obj.progress_callback = callback
+    except AttributeError:  # an object that refuses attributes simply reports no fine-grained progress
+        logger.debug("%r does not accept progress_callback", obj)
+    return callback
+
+
 def with_progress(fn: Callable[..., Any], job: dict[str, Any], step: str) -> Callable[..., Any]:
     """Wrap ``fn`` so it receives ``progress_callback=`` when the installed core supports it."""
     if not accepts_progress(fn):

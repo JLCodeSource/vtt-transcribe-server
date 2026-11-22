@@ -476,3 +476,25 @@ def test_finished_job_emails_the_owner_unless_opted_out(
     smtp.sent.clear()
     asyncio.run(scenario(opt_out=True))
     assert smtp.sent == []
+
+
+def test_attach_progress_sets_the_core_attribute_and_reports_within_the_step() -> None:
+    job = make_job("a", diarize=True)
+    obj = MagicMock()
+    callback = jobqueue.attach_progress(obj, job, "diarizing")
+    assert obj.progress_callback is callback
+    callback(0.5, "Identifying speakers")
+    assert job["progress"] == jobqueue.overall(job, "diarizing", 0.5)
+    assert job["message"] == "Identifying speakers"
+    job["cancel_requested"] = True
+    with pytest.raises(jobqueue.JobCancelled):
+        callback(0.6, "x")  # a cancel aborts the engine at its next report
+
+
+def test_run_diarizer_hands_the_callback_to_the_backend() -> None:
+    backend = MagicMock()
+    backend.diarize_audio.return_value = []
+    cb = MagicMock()
+    with patch.object(tx, "build_diarizer", return_value=backend):
+        tx.run_diarizer(MagicMock(), 2, cb)
+    assert backend.progress_callback is cb
