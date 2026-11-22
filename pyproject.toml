@@ -16,7 +16,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "vtt-transcribe[sherpa]>=0.6.0",  # core transcription/translation, shared speaker logic, sherpa-onnx diarization (CPU, no torch)
+    "vtt-transcribe[sherpa]>=0.6.2",  # core transcription/translation, shared speaker logic, sherpa-onnx diarization (CPU, no torch)
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
     "python-multipart>=0.0.20",  # File upload support
