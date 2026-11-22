@@ -126,6 +126,8 @@ export interface EnginesResponse {
   engines: Array<{ id: string; label: string; requires_api_key: boolean; available: boolean }>;
   diarizers: string[];
   max_speakers: number;
+  /** language names the translator understands (from the core translation model) */
+  languages?: string[];
 }
 
 export interface Me {

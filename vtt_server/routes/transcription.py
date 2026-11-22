@@ -29,6 +29,7 @@ from vtt_server.engines import (
     engine_info,
     make_local_transcriber,
     make_local_translate_fn,
+    translation_languages,
     validate_engine,
 )
 from vtt_server.errors import friendly_error
@@ -183,7 +184,7 @@ def validate_num_speakers(num_speakers: int | None) -> None:
 @router.get("/engines")
 async def list_engines() -> dict[str, Any]:
     """Selectable transcription engines (drives the frontend's engine picker)."""
-    return {"engines": engine_info(), "max_speakers": MAX_SPEAKERS}
+    return {"engines": engine_info(), "max_speakers": MAX_SPEAKERS, "languages": translation_languages()}
 
 
 def _retention_for(user: User, mode: str | None, days: int | None) -> dict[str, Any]:

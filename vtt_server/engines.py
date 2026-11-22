@@ -33,6 +33,29 @@ def local_engine_available() -> bool:
     return all(importlib.util.find_spec(m) is not None for m in ("faster_whisper", "sentencepiece"))
 
 
+# Offered when the core translation model's own list cannot be read.
+DEFAULT_LANGUAGES = [
+    "Arabic", "Chinese", "Dutch", "English", "French", "German", "Hindi", "Italian",
+    "Japanese", "Korean", "Polish", "Portuguese", "Russian", "Spanish", "Turkish", "Ukrainian",
+]  # fmt: skip
+
+
+def translation_languages() -> list[str]:
+    """Language names the translator understands, read from core's M2M100 table (the OpenAI path accepts any name).
+
+    Core maps each code and English name to a code; keep one name per code, alphabetically.
+    """
+    try:
+        from vtt_transcribe.local_translate import LANGUAGES
+    except Exception:  # core without the table, or a broken optional import: fall back to a fixed short list
+        return list(DEFAULT_LANGUAGES)
+    names: dict[str, str] = {}
+    for key, code in LANGUAGES.items():
+        if key != code:
+            names.setdefault(code, key.title())
+    return sorted(names.values()) or list(DEFAULT_LANGUAGES)
+
+
 def engine_info() -> list[dict[str, Any]]:
     """Describe the selectable engines (served by ``GET /api/engines`` for the UI's engine picker)."""
     return [

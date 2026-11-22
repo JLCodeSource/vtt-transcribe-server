@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { authHeaders, fetchEngines, fetchProfile } from '../api';
-  import { languageChoices } from '../languages';
+  import { languageChoices, loadLanguages, TRANSLATION_LANGUAGES } from '../languages';
   import type { UploadOptions, TranscriptionJob, EnginesResponse } from '../types';
 
   interface Props {
@@ -9,6 +9,9 @@
   }
 
   const { onuploadstart }: Props = $props();
+
+  let languages: string[] = $state(TRANSLATION_LANGUAGES);
+  loadLanguages().then((l) => (languages = l));
 
   let isDragging = $state(false);
   // Several files can be chosen or dropped at once; each becomes its own job and waits its turn in the queue.
@@ -332,7 +335,7 @@
           <span>Translate to (optional)</span>
           <select bind:value={options.translateTo} disabled={isUploading} aria-label="Translate to">
             <option value="">No translation</option>
-            {#each languageChoices(options.translateTo ?? '') as l (l)}<option value={l}>{l}</option>{/each}
+            {#each languageChoices(languages, options.translateTo ?? '') as l (l)}<option value={l}>{l}</option>{/each}
           </select>
           <span class="help">Needs an OpenAI API key (unless you use the local engine)</span>
         </label>

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { TranscriptSegment } from '../types';
   import { authHeaders } from '../api';
-  import { languageChoices } from '../languages';
+  import { languageChoices, loadLanguages, TRANSLATION_LANGUAGES } from '../languages';
 
   interface Props {
     segments: TranscriptSegment[];
@@ -15,6 +15,9 @@
   }
 
   const { segments, jobId, onreset, onreview, ontranslate, translatedTo = null }: Props = $props();
+
+  let languages: string[] = $state(TRANSLATION_LANGUAGES);
+  loadLanguages().then((l) => (languages = l));
 
   let showTranslation = $state(true);
   let targetLanguage = $state('');
@@ -120,7 +123,7 @@
     <div class="controls translate">
       <select aria-label="Translate to language" bind:value={targetLanguage} class="search-input">
         <option value="">Translate to…</option>
-        {#each languageChoices(targetLanguage) as l (l)}<option value={l}>{l}</option>{/each}
+        {#each languageChoices(languages, targetLanguage) as l (l)}<option value={l}>{l}</option>{/each}
       </select>
       <button type="button" onclick={translate} disabled={translating || !targetLanguage.trim()}>
         {translating ? 'Translating…' : 'Translate'}

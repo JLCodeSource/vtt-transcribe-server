@@ -216,6 +216,19 @@ class TestEngineSeam:
         assert ids["local"]["available"] is False  # the test env does not install the 'local' extra
         assert "diarizers" not in data
 
+    def test_engines_listing_carries_the_translation_languages(self, client):
+        languages = client.get("/api/engines").json()["languages"]
+        assert "Spanish" in languages
+        assert "Japanese" in languages
+        assert languages == sorted(languages)
+        assert len(languages) == len(set(languages))
+
+    def test_translation_languages_fall_back_when_core_table_is_unavailable(self):
+        from vtt_server import engines
+
+        with patch.dict("sys.modules", {"vtt_transcribe.local_translate": None}):
+            assert engines.translation_languages() == engines.DEFAULT_LANGUAGES
+
     def test_engines_listing_reports_local_when_installed(self, client):
         with patch("vtt_server.engines.local_engine_available", return_value=True):
             ids = {e["id"]: e for e in client.get("/api/engines").json()["engines"]}
