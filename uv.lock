@@ -2582,16 +2582,16 @@ wheels = [
 
 [[package]]
 name = "vtt-transcribe"
-version = "0.6.0"
+version = "0.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "moviepy" },
     { name = "openai" },
     { name = "python-dotenv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/67/82/4f9e9ebeaafc14de917337d0a1e9a5e7b539b7530fc80bc7d3796e666fe9/vtt_transcribe-0.6.0.tar.gz", hash = "sha256:37d369b4e8aacdecccce000f643a1d54e866e18cdc98cfd7499d6e01639c2824", size = 1028814, upload-time = "2026-11-16T23:22:27.221Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/44/aae7009d1849b6d1f2b74aa2407a3a66679c1897d96b700c4a6561b83ad9/vtt_transcribe-0.6.2.tar.gz", hash = "sha256:0422ed91fa3f7499fd882d40060830b375f2a4f3b9a7a834235d8f3c1fbaf4dc", size = 1034382, upload-time = "2026-11-22T10:17:49.794Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/5d/2046afdd775d580bf152089615190fedcc570787a0176299e6ff2379c9e8/vtt_transcribe-0.6.0-py3-none-any.whl", hash = "sha256:525ff5b3b4f9be7ffed7a490a8e7b9eacc4fcd4654663a6870152ee18a461165", size = 61390, upload-time = "2026-11-16T23:22:25.659Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/a5/d3377de97858f855deb4069eccd06c6b421cf9815d18f4a4af4f4802338b/vtt_transcribe-0.6.2-py3-none-any.whl", hash = "sha256:ab9c9116117469dcc3f89d4927a56ac4903ace608a87881fca05e7703f90b3ff", size = 65025, upload-time = "2026-11-22T10:17:48.501Z" },
 ]
 
 [package.optional-dependencies]
@@ -2660,8 +2660,8 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
-    { name = "vtt-transcribe", extras = ["local"], marker = "extra == 'local'", specifier = ">=0.6.0" },
-    { name = "vtt-transcribe", extras = ["sherpa"], specifier = ">=0.6.0" },
+    { name = "vtt-transcribe", extras = ["local"], marker = "extra == 'local'", specifier = ">=0.6.2" },
+    { name = "vtt-transcribe", extras = ["sherpa"], specifier = ">=0.6.2" },
 ]
 provides-extras = ["local"]
 
