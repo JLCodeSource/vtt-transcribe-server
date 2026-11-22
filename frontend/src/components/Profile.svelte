@@ -19,6 +19,8 @@
   let notify = $state(true);
   let engine = $state('');
   let diarize = $state(false);
+  let speakers = $state('auto');
+  let translateTo = $state('');
   let keyInput = $state('');
   let currentPassword = $state('');
   let newPassword = $state('');
@@ -32,6 +34,8 @@
     notify = p.notify_job_ready;
     engine = p.default_options.engine ?? '';
     diarize = p.default_options.diarize ?? false;
+    speakers = p.default_options.num_speakers ? String(p.default_options.num_speakers) : 'auto';
+    translateTo = p.default_options.translate_to ?? '';
   }
 
   async function run(fn: () => Promise<void>, done: string) {
@@ -51,7 +55,13 @@
     run(async () => load(await updateProfile({ retention_mode: mode, retention_days: mode === 'hold' ? Number(days) : null })), 'Retention saved');
   const saveNotify = () => run(async () => load(await updateProfile({ notify_job_ready: notify })), 'Email preference saved');
   const saveOptions = () =>
-    run(async () => load(await updateProfile({ default_options: { ...(engine ? { engine } : {}), diarize } })), 'Defaults saved');
+    run(async () => load(await updateProfile({ default_options: {
+            ...(engine ? { engine } : {}),
+            diarize,
+            ...(diarize && speakers !== 'auto' ? { num_speakers: Number(speakers) } : {}),
+            ...(translateTo.trim() ? { translate_to: translateTo.trim() } : {}),
+          },
+        })), 'Defaults saved');
   const saveKey = () =>
     run(async () => {
       load(await setOpenAIKey(keyInput));
@@ -100,6 +110,7 @@
 
     <section>
       <h3>Defaults for new jobs</h3>
+      <p class="muted">Each setting here can be changed for an individual file when you add it.</p>
       <label>
         <span>Engine</span>
         <select bind:value={engine} aria-label="Default engine">
@@ -109,6 +120,19 @@
         </select>
       </label>
       <label class="check"><input type="checkbox" bind:checked={diarize} /> <span>Identify speakers</span></label>
+      {#if diarize}
+        <label>
+          <span>Number of speakers</span>
+          <select bind:value={speakers} aria-label="Default number of speakers">
+            <option value="auto">Auto-detect</option>
+            {#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}<option value={String(n)}>{n}</option>{/each}
+          </select>
+        </label>
+      {/if}
+      <label>
+        <span>Translate to</span>
+        <input type="text" bind:value={translateTo} placeholder="e.g. Spanish (blank for none)" aria-label="Default translation language" />
+      </label>
       <button type="button" onclick={saveOptions}>Save defaults</button>
     </section>
 

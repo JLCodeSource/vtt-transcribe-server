@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import Navigation from './components/Navigation.svelte';
   import UserMenu from './components/UserMenu.svelte';
-  import Settings from './components/Settings.svelte';
   import FileUpload from './components/FileUpload.svelte';
   import TranscriptViewer from './components/TranscriptViewer.svelte';
   import SpeakerReview from './components/SpeakerReview.svelte';
@@ -28,7 +27,6 @@
 
   // Page navigation state
   let currentPage = $state(focusJobId ? 'jobs' : 'home');
-  let settingsOpen = $state(false);
 
   // Job state
   let currentJob: TranscriptionJob | null = $state(null);
@@ -251,11 +249,7 @@
   }
 
   function handleNavigate(page: string) {
-    if (page === 'settings') {
-      settingsOpen = true;
-    } else {
-      currentPage = page;
-    }
+    currentPage = page;
   }
 
   // A submitted file goes straight to the queue: the Jobs page shows where it is and how far along.
@@ -293,7 +287,7 @@
     const apiKey = sessionStorage.getItem('openai_api_key') ?? '';
     // Only OpenAI translation needs a key; jobs transcribed with the local engine translate on the server.
     if ((segmentsData?.engine ?? 'openai') === 'openai' && !apiKey) {
-      throw new Error('Enter your OpenAI API key (Settings) to translate.');
+      throw new Error('Enter your OpenAI API key (Profile) to translate.');
     }
     applySegments(await translateJob(currentJob.job_id, language, apiKey || null));
   }
@@ -306,11 +300,7 @@
   }
 
   function openSettings() {
-    settingsOpen = true;
-  }
-
-  function closeSettings() {
-    settingsOpen = false;
+    currentPage = 'profile';
   }
 </script>
 
@@ -424,7 +414,6 @@
     </footer>
   </div>
 
-  <Settings isOpen={settingsOpen} onclose={closeSettings} />
 {/if}
 
 <style>

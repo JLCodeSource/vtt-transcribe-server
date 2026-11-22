@@ -96,7 +96,7 @@ restart; anything that was waiting or running is re-queued on startup. Run **one
 Results stay downloadable and reviewable until their retention runs out (see the table below). Each user sets a default
 under **Profile**, can override it per file and later per job; the Jobs page shows the expiry date. The Profile page also holds
 your OpenAI key (stored encrypted, shown only as its last four characters, used when a request has none), the email opt-out,
-password change and account deletion. Email is optional: with `SMTP_HOST` set, new users get a welcome email and job owners
+password change and account deletion. Email is optional (compose runs a local Postfix relay for it): with `SMTP_HOST` set, new users get a welcome email and job owners
 get a "ready / failed" email linking to the job unless they opt out. There is no email verification step.
 
 ## Security
@@ -119,7 +119,8 @@ Uploads are limited to 100 MB. Environment settings (all optional):
 | `VTT_DELETE_GRACE_MINUTES` / `VTT_DELETE_UNDOWNLOADED_HOURS` | `15` / `24` | policy "delete": removed 15 minutes after the first download, or 24 h after finishing if never downloaded |
 | `VTT_SWEEP_INTERVAL_SECONDS` | `300` | how often expired jobs and their files are deleted |
 | `VTT_PUBLIC_URL` | _(empty)_ | base URL used for links in emails (`<url>/?job=<id>`) |
-| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASSWORD` `SMTP_FROM` `SMTP_STARTTLS` | _(empty)_ / `587` / … / `true` | outgoing email (welcome message, "your job is ready"). Without `SMTP_HOST` nothing is sent and nothing fails. Port 465 uses implicit TLS |
+| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASSWORD` `SMTP_FROM` `SMTP_STARTTLS` | `mail` / `25` / … / `noreply@$VTT_MAIL_DOMAIN` / `false` (compose); empty outside compose | outgoing email (welcome message, "your job is ready"). Compose points these at the bundled `mail` relay; set `SMTP_HOST` to your own server instead, or empty to switch email off. Without `SMTP_HOST` nothing is sent and nothing fails. Port 465 uses implicit TLS |
+| `VTT_MAIL_DOMAIN` `VTT_MAIL_HOSTNAME` `RELAYHOST` `RELAYHOST_USERNAME` `RELAYHOST_PASSWORD` | `localhost` / `mail.$VTT_MAIL_DOMAIN` / _(empty)_ | the bundled Postfix `mail` service (compose only, not published on the host): sender domain, its HELO name, and an optional smarthost to send through. With no `RELAYHOST` it delivers directly; without SPF/DKIM/reverse DNS for your domain such mail is often filtered as spam |
 | `ENVIRONMENT` | `development` | set `production` only when served over HTTPS (it makes session cookies HTTPS-only) |
 
 Before exposing an instance to the internet:
