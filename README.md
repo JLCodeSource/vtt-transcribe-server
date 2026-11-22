@@ -16,7 +16,7 @@ Pick one. All three serve the web app and the API from one address; sign up in t
 pip install vtt-transcribe-server              # OpenAI Whisper (needs an API key) + key-free speaker identification
 pip install "vtt-transcribe-server[local]"     # adds key-free on-box Whisper and translation (large: faster-whisper)
 
-vtt-server init                                # writes ./.env with freshly generated SECRET_KEY and ENCRYPTION_KEY
+vtt-server init                                # writes ./.env with freshly generated SECRET_KEY, ENCRYPTION_KEY and SESSION_SECRET
 vtt-server                                     # http://127.0.0.1:8000
 ```
 

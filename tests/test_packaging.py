@@ -40,6 +40,7 @@ def test_init_writes_fresh_secrets_readable_only_by_the_owner(clean_env, capsys)
     env_file = clean_env / ".env"
     values = dict(line.split("=", 1) for line in env_file.read_text().splitlines() if "=" in line and not line.startswith("#"))
     assert len(values["SECRET_KEY"]) == 64
+    assert len(values["SESSION_SECRET"]) == 64
     from cryptography.fernet import Fernet
 
     Fernet(values["ENCRYPTION_KEY"].encode())  # a valid Fernet key

@@ -49,7 +49,11 @@ def load_env_file(path: Path) -> None:
 def new_secrets() -> dict[str, str]:
     from cryptography.fernet import Fernet
 
-    return {"SECRET_KEY": secrets.token_hex(32), "ENCRYPTION_KEY": Fernet.generate_key().decode()}
+    return {
+        "SECRET_KEY": secrets.token_hex(32),
+        "ENCRYPTION_KEY": Fernet.generate_key().decode(),
+        "SESSION_SECRET": secrets.token_hex(32),
+    }
 
 
 def init_command(args: argparse.Namespace) -> int:
@@ -63,6 +67,7 @@ def init_command(args: argparse.Namespace) -> int:
         "# Changing ENCRYPTION_KEY later makes stored API keys unreadable; changing SECRET_KEY signs everyone out.\n"
         f"SECRET_KEY={generated['SECRET_KEY']}\n"
         f"ENCRYPTION_KEY={generated['ENCRYPTION_KEY']}\n"
+        f"SESSION_SECRET={generated['SESSION_SECRET']}\n"
         "\n"
         "# Optional (see the README for the full list):\n"
         "# VTT_DEFAULT_RETENTION_DAYS=7\n"
@@ -73,7 +78,7 @@ def init_command(args: argparse.Namespace) -> int:
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(body)
     target.chmod(stat.S_IRUSR | stat.S_IWUSR)
-    print(f"Wrote {target} with new SECRET_KEY and ENCRYPTION_KEY.")
+    print(f"Wrote {target} with new SECRET_KEY, ENCRYPTION_KEY and SESSION_SECRET.")
     print("Start the server with:  vtt-server")
     return 0
 
