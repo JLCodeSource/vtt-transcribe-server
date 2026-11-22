@@ -40,6 +40,34 @@ def _no_job_persistence():
     store.session_factory = None
 
 
+@pytest.fixture
+def inline_queue(monkeypatch):
+    """Run queued jobs to completion, in order, as soon as they are submitted (deterministic, no background task).
+
+    A plain ``TestClient(app)`` opens a fresh event loop for every request and closes it afterwards, so the real worker
+    task, which lives on the loop of the request that started it, is cancelled whenever it has not finished by then.
+    Tests that submit a job and then read its result use this instead of polling for a task that may have been dropped.
+    """
+    import asyncio
+    import threading
+
+    from vtt_server import jobqueue
+
+    def drain(self):  # noqa: ARG001
+        def work():
+            async def run_all():
+                while queued := jobqueue.waiting(jobqueue.queue._jobs()):  # noqa: SLF001
+                    await jobqueue.queue.process(queued[0])
+
+            asyncio.run(run_all())
+
+        thread = threading.Thread(target=work)
+        thread.start()
+        thread.join()
+
+    monkeypatch.setattr(jobqueue.JobQueue, "ensure_running", drain)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def load_env() -> None:
     """Ensure environment variables are loaded from .env file."""
