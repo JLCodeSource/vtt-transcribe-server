@@ -11,7 +11,7 @@
 # Diarization is sherpa-onnx (CPU, ~46 MB models fetched on first use, no torch, no token).
 
 # Build stage: resolve and install dependencies into /opt/venv
-FROM python:3.12-slim AS builder
+FROM python:3.15-slim AS builder
 
 WORKDIR /app
 
@@ -34,7 +34,7 @@ COPY vtt_server ./vtt_server
 RUN uv sync --frozen --no-dev --no-editable ${SYNC_ARGS}
 
 # Runtime stage: minimal image with only runtime dependencies
-FROM python:3.12-slim AS base
+FROM python:3.15-slim AS base
 
 # Configurable UID for non-root user (default 1000 for typical Linux desktops)
 ARG USER_UID=1000
