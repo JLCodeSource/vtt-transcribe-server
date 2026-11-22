@@ -22,7 +22,6 @@ Source: original repo `JLCodeSource/vtt-transcribe` at commit `1cadf06c8529e6317
 | `docs/DOCKER_COMPOSE.md` | same |
 | `docs/DOCKER_SETUP.md` (compose guide) | same |
 | `docs/USER_MANAGEMENT.md` | same |
-| `docs/JOB_PERSISTENCE_INTEGRATION.md` | same |
 
 After deleting `scripts/generate_secrets.py` and `scripts/init_db.py`, `scripts/` is empty: remove it too, and remove
 the `"scripts/*.py" = ["INP001"]` ruff ignore (see b).

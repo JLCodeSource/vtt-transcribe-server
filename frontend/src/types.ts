@@ -1,10 +1,59 @@
 export interface TranscriptionJob {
   job_id: string;
   filename: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: JobStatus;
   progress?: number;
   detected_language?: string;
   translated_to?: string;
+}
+
+export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type RetentionMode = 'keep' | 'delete' | 'hold';
+
+/** One row of GET /api/jobs (the Jobs page). */
+export interface JobSummary {
+  job_id: string;
+  filename: string;
+  status: JobStatus;
+  /** queued, detecting, transcribing, diarizing, translating, done, failed, cancelled */
+  step: string | null;
+  /** overall 0..1 */
+  progress: number | null;
+  message?: string | null;
+  error?: string | null;
+  /** 1 = next to run; null unless waiting */
+  queue_position: number | null;
+  retention_mode?: RetentionMode | null;
+  retention_days?: number | null;
+  expires_at: string | null;
+  created_at?: string;
+  completed_at?: string | null;
+  downloaded_at?: string | null;
+  engine?: string;
+  user_id?: number;
+}
+
+export interface JobList {
+  jobs: JobSummary[];
+  queue_length: number;
+  running: string | null;
+}
+
+export interface Profile {
+  username: string;
+  email: string;
+  oauth_provider: string | null;
+  /** keep | delete | hold | default (platform default) */
+  retention_mode: RetentionMode | 'default';
+  retention_days: number | null;
+  effective_retention: { mode: RetentionMode; days: number | null };
+  platform_retention: { mode: RetentionMode; days: number | null };
+  notify_job_ready: boolean;
+  email_enabled: boolean;
+  default_options: { engine?: 'openai' | 'local'; diarize?: boolean; translate_to?: string };
+  has_openai_key: boolean;
+  /** ****abcd; the key itself is never returned */
+  openai_key_hint: string | null;
 }
 
 export interface TranscriptSegment {
@@ -25,11 +74,14 @@ export interface UploadOptions {
   model?: string;
   apiKey?: string;
   translateTo?: string;
+  /** keep | delete | hold; '' = your profile default */
+  retentionMode?: RetentionMode | '';
+  retentionDays?: string;
 }
 
 export interface WebSocketMessage {
   job_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: JobStatus;
   filename: string;
   result?: string;
   error?: string;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { authHeaders, fetchEngines } from '../api';
+  import { authHeaders, fetchEngines, fetchProfile } from '../api';
   import type { UploadOptions, TranscriptionJob, EnginesResponse } from '../types';
 
   interface Props {
@@ -19,15 +19,29 @@
     language: 'auto',
     model: 'whisper-1',
     apiKey: '',
+    retentionMode: '',
+    retentionDays: '7',
   });
+  // A key saved in the profile means the field is optional (the server falls back to it).
+  let profileHasKey = $state(false);
   let engines: EnginesResponse['engines'] = $state([
     { id: 'openai', label: 'OpenAI Whisper (API)', requires_api_key: true, available: true },
     { id: 'local', label: 'Local Whisper (no key)', requires_api_key: false, available: false },
   ]);
-  const needsKey = $derived(engines.find((e) => e.id === options.engine)?.requires_api_key ?? true);
+  const needsKey = $derived((engines.find((e) => e.id === options.engine)?.requires_api_key ?? true) && !profileHasKey);
   let isUploading = $state(false);
 
   onMount(() => {
+    fetchProfile()
+      .then((p) => {
+        profileHasKey = p.has_openai_key;
+        if (p.default_options.engine) options.engine = p.default_options.engine;
+        if (p.default_options.diarize !== undefined) options.diarization = p.default_options.diarize;
+        if (p.default_options.translate_to) options.translateTo = p.default_options.translate_to;
+      })
+      .catch(() => {
+        /* the profile is an optional convenience */
+      });
     fetchEngines()
       .then((r) => (engines = r.engines))
       .catch(() => {
@@ -132,6 +146,10 @@
       if (options.diarization && options.numSpeakers && options.numSpeakers !== 'auto') {
         formData.append('num_speakers', options.numSpeakers);
       }
+      if (options.retentionMode) {
+        formData.append('retention_mode', options.retentionMode);
+        if (options.retentionMode === 'hold') formData.append('retention_days', options.retentionDays || '7');
+      }
       if (options.translateTo?.trim()) {
         formData.append('translate_to', options.translateTo.trim());
       }
@@ -153,7 +171,9 @@
 
       const job = (await response.json()) as TranscriptionJob;
 
-      // Dispatch custom event with job details
+      // Ready for the next file; the app moves on to the Jobs page, where the job waits in the queue
+      selectedFile = null;
+      isUploading = false;
       const event = new CustomEvent<TranscriptionJob>('uploadstart', { detail: job });
       onuploadstart(event);
     } catch (error) {
@@ -280,8 +300,24 @@
           disabled={isUploading}
           aria-label="Translate to"
         />
-        <span class="hint-text">Needs an OpenAI API key</span>
+        <span class="hint-text">Needs an OpenAI API key (unless you use the local engine)</span>
       </label>
+
+      <label class="input-label">
+        <span>Keep the result</span>
+        <select bind:value={options.retentionMode} disabled={isUploading} aria-label="Retention">
+          <option value="">Use my default</option>
+          <option value="hold">Keep for a number of days</option>
+          <option value="keep">Keep until I delete it</option>
+          <option value="delete">Delete after I download it</option>
+        </select>
+      </label>
+      {#if options.retentionMode === 'hold'}
+        <label class="input-label">
+          <span>Days to keep</span>
+          <input type="number" min="1" max="3650" bind:value={options.retentionDays} disabled={isUploading} aria-label="Days to keep" />
+        </label>
+      {/if}
 
       <label class="input-label">
         <span>Language</span>
@@ -309,7 +345,7 @@
       </label>
 
       <button type="button" class="primary upload-btn" onclick={handleUpload} disabled={isUploading}>
-        {isUploading ? 'Uploading...' : 'Start Transcription'}
+        {isUploading ? 'Uploading...' : 'Add to queue'}
       </button>
     </div>
   {/if}

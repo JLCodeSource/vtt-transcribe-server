@@ -1,4 +1,4 @@
-import type { AdminUser, AdminUserList, EnginesResponse, Me, SegmentsResponse } from './types';
+import type { AdminUser, AdminUserList, EnginesResponse, JobList, JobSummary, Me, Profile, RetentionMode, SegmentsResponse } from './types';
 
 /** The signed-in user's bearer token. The server requires it on every /api call. */
 let authToken: string | null = null;
@@ -55,6 +55,26 @@ export const clipUrl = (id: string, speakerId: string, start?: number, end?: num
   const q = start !== undefined && end !== undefined ? `?start=${start}&end=${end}` : '';
   return withToken(`${job(id)}/speakers/${encodeURIComponent(speakerId)}/clip${q}`);
 };
+
+// ---- jobs queue ----
+export const fetchJobs = () => request<JobList>('/api/jobs');
+export const cancelJob = (id: string) => request<JobSummary>(`${job(id)}/cancel`, { method: 'POST' });
+export const setJobRetention = (id: string, mode: RetentionMode, days: number | null) =>
+  request<JobSummary>(`${job(id)}/retention`, json('PUT', { mode, days }));
+export async function deleteJob(id: string): Promise<void> {
+  await requestNoBody(job(id), { method: 'DELETE', headers: authHeaders() });
+}
+/** Download URL (token in the query string so a plain link works). */
+export const downloadUrl = (id: string, format: 'txt' | 'vtt' | 'srt' | 'json') => withToken(`${job(id)}/download?format=${format}`);
+
+// ---- profile ----
+export const fetchProfile = () => request<Profile>('/api/profile');
+export const updateProfile = (patch: Record<string, unknown>) => request<Profile>('/api/profile', json('PATCH', patch));
+export const setOpenAIKey = (apiKey: string) => request<Profile>('/api/profile/openai-key', json('PUT', { api_key: apiKey }));
+export const removeOpenAIKey = () => request<Profile>('/api/profile/openai-key', { method: 'DELETE' });
+export async function deleteAccount(password: string | null): Promise<void> {
+  await requestNoBody('/api/profile', { ...json('DELETE', { password }), headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
+}
 
 // ---- account + admin (explicit token, so they work before setAuthToken has run) ----
 const authed = (token: string, init: RequestInit = {}): RequestInit => ({

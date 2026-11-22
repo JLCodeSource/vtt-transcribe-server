@@ -9,9 +9,10 @@
   import { changePassword, fetchMe, fetchSegments, setAuthToken, translateJob } from './api';
   import Admin from './components/Admin.svelte';
   import ChangePassword from './components/ChangePassword.svelte';
-  import ProgressView from './components/ProgressView.svelte';
+  import Jobs from './components/Jobs.svelte';
+  import Profile from './components/Profile.svelte';
   import Login from './components/Login.svelte';
-  import type { SegmentsResponse, TranscriptionJob, TranscriptSegment } from './types';
+  import type { JobSummary, SegmentsResponse, TranscriptionJob, TranscriptSegment } from './types';
 
   // Auth state
   let isAuthenticated = $state(false);
@@ -22,8 +23,11 @@
   let isAdmin = $state(false);
   let mustChangePassword = $state(false);
 
+  // Opening a link from the "job finished" email (?job=<id>) lands on that job
+  const focusJobId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('job') : null;
+
   // Page navigation state
-  let currentPage = $state('home');
+  let currentPage = $state(focusJobId ? 'jobs' : 'home');
   let settingsOpen = $state(false);
 
   // Job state
@@ -31,6 +35,7 @@
   let transcript: TranscriptSegment[] = $state([]);
   let segmentsData: SegmentsResponse | null = $state(null);
   let reviewing = $state(false);
+  let jobError = $state('');
 
   // User-friendly error messages for OAuth errors
   const oauthErrorMessages: Record<string, string> = {
@@ -253,15 +258,10 @@
     }
   }
 
+  // A submitted file goes straight to the queue: the Jobs page shows where it is and how far along.
   function handleUploadStart(event: CustomEvent<TranscriptionJob>) {
-    currentJob = event.detail;
-    transcript = [];
-  }
-
-  function handleProgress(event: CustomEvent<Partial<TranscriptionJob>>) {
-    if (currentJob) {
-      currentJob = { ...currentJob, ...event.detail };
-    }
+    void event;
+    currentPage = 'jobs';
   }
 
   function applySegments(data: SegmentsResponse) {
@@ -275,16 +275,16 @@
     }));
   }
 
-  async function handleComplete(event: CustomEvent<TranscriptSegment[]>) {
-    transcript = event.detail;
-    if (currentJob) {
-      currentJob = { ...currentJob, status: 'completed' };
-      // Structured segments (speaker names, translation) come from the server; the websocket text is the fallback.
-      try {
-        applySegments(await fetchSegments(currentJob.job_id));
-      } catch {
-        segmentsData = null;
-      }
+  async function openJob(summary: JobSummary) {
+    jobError = '';
+    currentJob = { job_id: summary.job_id, filename: summary.filename, status: summary.status };
+    transcript = [];
+    segmentsData = null;
+    reviewing = false;
+    try {
+      applySegments(await fetchSegments(summary.job_id));
+    } catch (e: unknown) {
+      jobError = e instanceof Error ? e.message : 'Could not load the transcript';
     }
   }
 
@@ -296,13 +296,6 @@
       throw new Error('Enter your OpenAI API key (Settings) to translate.');
     }
     applySegments(await translateJob(currentJob.job_id, language, apiKey || null));
-  }
-
-  function handleError(event: CustomEvent<string>) {
-    if (currentJob) {
-      currentJob = { ...currentJob, status: 'failed' };
-    }
-    alert(`Error: ${event.detail}`);
   }
 
   function handleReset() {
@@ -353,17 +346,19 @@
         </div>
 
         <div class="content-card">
-          {#if !currentJob}
-            <FileUpload onuploadstart={handleUploadStart} />
-          {:else}
+          <FileUpload onuploadstart={handleUploadStart} />
+        </div>
+      {:else if currentPage === 'jobs'}
+        <div class="page-header">
+          <h2>📋 Transcription Jobs</h2>
+          <p>Your queue, progress and finished transcripts</p>
+        </div>
+        <div class="content-card">
+          {#if currentJob}
             <div class="job-section">
-              <ProgressView
-                job={currentJob}
-                onprogress={handleProgress}
-                oncomplete={handleComplete}
-                onerror={handleError}
-              />
-
+              <button type="button" class="back" onclick={handleReset}>← Back to jobs</button>
+              <h3>{currentJob.filename}</h3>
+              {#if jobError}<p class="error-text" role="alert">{jobError}</p>{/if}
               {#if reviewing && segmentsData}
                 <SpeakerReview
                   jobId={currentJob.job_id}
@@ -382,15 +377,17 @@
                 />
               {/if}
             </div>
+          {:else}
+            <Jobs onopen={openJob} {focusJobId} />
           {/if}
         </div>
-      {:else if currentPage === 'jobs'}
+      {:else if currentPage === 'profile' && accessToken}
         <div class="page-header">
-          <h2>📋 Transcription Jobs</h2>
-          <p>View and manage your transcription history</p>
+          <h2>👤 Profile</h2>
+          <p>Retention, your OpenAI key, email and account</p>
         </div>
         <div class="content-card">
-          <p class="placeholder-text">Job history coming soon...</p>
+          <Profile token={accessToken} onaccountdeleted={handleLogout} />
         </div>
       {:else if currentPage === 'admin' && isAdmin && accessToken}
         <div class="page-header">
@@ -506,6 +503,9 @@
     line-height: 1.8;
     color: #374151;
   }
+
+  .back { align-self: flex-start; background: none; border: none; color: #4f46e5; cursor: pointer; padding: 0; }
+  .error-text { color: #b91c1c; }
 
   .placeholder-text {
     text-align: center;

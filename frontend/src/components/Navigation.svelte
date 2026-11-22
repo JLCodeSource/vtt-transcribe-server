@@ -11,7 +11,8 @@
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'jobs', label: 'Jobs', icon: '📋' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
-    { id: 'about', label: 'About', icon: 'ℹ️' }
+    { id: 'about', label: 'About', icon: 'ℹ️' },
+    { id: 'profile', label: 'Profile', icon: '👤' }
   ];
   const menuItems = $derived(showAdmin ? [...baseItems, { id: 'admin', label: 'Admin', icon: '🛡️' }] : baseItems);
 
