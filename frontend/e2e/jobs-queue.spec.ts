@@ -23,7 +23,7 @@ test.describe('Jobs page', () => {
     await page.route('**/api/transcribe', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ job_id: 'j2', status: 'pending' }) }));
     await page.route('**/api/jobs', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(JOBS) }));
     await page.locator('#file-input').setInputFiles({ name: 'second.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from('audio') });
-    await page.getByLabel('Engine').selectOption('openai');
+    await page.getByLabel('Engine', { exact: true }).selectOption('openai');
     await page.getByPlaceholder('sk-...').fill('sk-test-key-0000');
     await page.getByRole('button', { name: /Add to queue/ }).click();
     await expect(page.getByRole('heading', { name: /Transcription Jobs/ })).toBeVisible();
