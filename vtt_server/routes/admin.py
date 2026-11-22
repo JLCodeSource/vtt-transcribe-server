@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vtt_server.auth import get_current_admin, get_password_hash
 from vtt_server.database import get_db
 from vtt_server.models import TranscriptionJob, User
-from vtt_server.routes.transcription import _job_dir
+from vtt_server.routes.transcription import _job_dir, purge_user_jobs
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -222,3 +222,4 @@ async def delete_user(
     await db.commit()
     for job_id in job_ids:
         shutil.rmtree(_job_dir(job_id), ignore_errors=True)
+    purge_user_jobs(user.id)

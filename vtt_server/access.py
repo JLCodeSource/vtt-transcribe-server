@@ -24,6 +24,25 @@ def _jobs() -> dict[str, dict[str, Any]]:
     return jobs
 
 
+# Internals that are bulky, secret or not JSON-serialisable; speaker data has its own endpoints.
+_HIDDEN = {
+    "progress_updates", "segments", "speaker_names", "audio_path", "raw_transcript", "user_id", "secret", "queue_seq",
+    "cancel_requested",
+}  # fmt: skip
+
+
+def public_view(job: dict[str, Any]) -> dict[str, Any]:
+    """A job as the API shows it: status, step, progress, queue position and expiry, without internals or the result text."""
+    from vtt_server.jobqueue import queue_position
+
+    view = {k: v for k, v in job.items() if k not in _HIDDEN}
+    view["queue_position"] = queue_position(_jobs(), job)
+    view.setdefault("step", None)
+    view.setdefault("progress", None)
+    view.setdefault("expires_at", None)
+    return view
+
+
 def may_access(job: dict[str, Any], user: User) -> bool:
     """Owners and administrators may see a job. Jobs with no recorded owner are administrator-only."""
     return bool(user.is_superuser or (job.get("user_id") is not None and job.get("user_id") == user.id))
@@ -43,17 +62,18 @@ async def owned_job(
 def check_capacity(user: User) -> None:
     """Refuse a new job when this user, or the whole server, already has too many running.
 
-    Limits come from ``VTT_MAX_ACTIVE_JOBS_PER_USER`` (default 2) and ``VTT_MAX_ACTIVE_JOBS`` (default 4); 0 disables.
+    "Active" means queued or running. Limits come from ``VTT_MAX_ACTIVE_JOBS_PER_USER`` (default 10) and
+    ``VTT_MAX_ACTIVE_JOBS`` (default 50); 0 disables.
     """
-    per_user = _int_env("VTT_MAX_ACTIVE_JOBS_PER_USER", 2)
-    total = _int_env("VTT_MAX_ACTIVE_JOBS", 4)
+    per_user = _int_env("VTT_MAX_ACTIVE_JOBS_PER_USER", 10)
+    total = _int_env("VTT_MAX_ACTIVE_JOBS", 50)
     if not per_user and not total:
         return
     active = [j for j in _jobs().values() if isinstance(j, dict) and j.get("status") in {"pending", "processing"}]
     if per_user and sum(1 for j in active if j.get("user_id") == user.id) >= per_user:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="You already have jobs running. Wait for one to finish before starting another.",
+            detail="You have too many jobs queued. Wait for some to finish before adding more.",
         )
     if total and len(active) >= total:
         raise HTTPException(

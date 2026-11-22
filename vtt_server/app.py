@@ -1,5 +1,6 @@
 """FastAPI application factory and configuration."""
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -12,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from vtt_transcribe import __version__
 
+from vtt_server import jobqueue
 from vtt_server.database import init_db
 from vtt_server.routes import admin, api_keys, auth, health, jobs, speakers, transcription, websockets
 
@@ -34,8 +36,31 @@ async def lifespan(_app: FastAPI):  # type: ignore
     with contextlib.suppress(Exception):
         # Database initialization failed, continue without DB functionality
         await init_db()
+        # Bring persisted jobs back: finished ones stay viewable, queued/running ones are re-queued
+        await jobqueue.recover(transcription.jobs)
+    sweeper = asyncio.create_task(_sweep_loop())
     yield
-    # Shutdown: cleanup if needed
+    # Shutdown: stop the sweeper and the queue worker (unfinished jobs are re-queued on the next start)
+    sweeper.cancel()
+    await jobqueue.queue.stop()
+
+
+async def _sweep_loop() -> None:
+    """Delete jobs whose retention has run out, every ``VTT_SWEEP_INTERVAL_SECONDS`` (default 300)."""
+    try:
+        interval = max(1.0, float(os.getenv("VTT_SWEEP_INTERVAL_SECONDS", "300")))
+    except ValueError:
+        interval = 300.0
+    while True:
+        try:
+            removed = await transcription.sweep_expired()
+            if removed:
+                logger.info("Retention sweep removed %d job(s)", len(removed))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Retention sweep failed")
+        await asyncio.sleep(interval)
 
 
 app = FastAPI(

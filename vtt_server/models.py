@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, false, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, false, func, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vtt_server.database import Base
@@ -20,6 +20,11 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(default=False, nullable=False)
     must_change_password: Mapped[bool] = mapped_column(default=False, nullable=False, server_default=false())
+    # Retention default for this user's jobs: "keep" | "delete" | "hold" (+ days). NULL means the platform default.
+    retention_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    notify_job_ready: Mapped[bool] = mapped_column(default=True, nullable=False, server_default=true())
+    default_options: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: preferred engine / diarize / language
     oauth_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)  # 'google', 'github', 'microsoft', or None
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -67,7 +72,17 @@ class TranscriptionJob(Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
-    )  # pending, processing, completed, failed
+    )  # pending (queued), processing, completed, failed, cancelled
+    step: Mapped[str | None] = mapped_column(String(20), nullable=True)  # queued, transcribing, diarizing, ...
+    progress: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0..1 overall
+    retention_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    downloaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    options: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: engine, diarize, num_speakers, translate_to
+    state: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: result, segments, speaker names, audio path
+    secret: Mapped[str | None] = mapped_column(Text, nullable=True)  # encrypted per-job API key; cleared when the job ends
     transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     detected_language: Mapped[str | None] = mapped_column(String(10), nullable=True)

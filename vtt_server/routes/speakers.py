@@ -106,9 +106,10 @@ def _view(job: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _apply(job: dict[str, Any], segments: list[dict[str, Any]], names: dict[str, str]) -> dict[str, Any]:
+async def _apply(job: dict[str, Any], segments: list[dict[str, Any]], names: dict[str, str]) -> dict[str, Any]:
     job["speaker_names"] = names
     tx.set_segments(job, segments)
+    await tx.persist(job["job_id"])  # reviews survive a restart
     return _view(job)
 
 
@@ -173,7 +174,7 @@ async def rename_many(job_id: str, body: NamesBody) -> dict[str, Any]:
             names = speakers.rename(job["segments"], names, sid, name)
         return names
 
-    return _apply(job, job["segments"], _guard(run))
+    return await _apply(job, job["segments"], _guard(run))
 
 
 @router.put("/speakers/{speaker_id}")
@@ -181,7 +182,7 @@ async def rename_speaker(job_id: str, speaker_id: str, body: RenameBody) -> dict
     """Rename one speaker; the name appears as ``Name: text`` in the result and all exports."""
     job = _job(job_id)
     names = _guard(lambda: speakers.rename(job["segments"], job.get("speaker_names", {}), speaker_id, body.name))
-    return _apply(job, job["segments"], names)
+    return await _apply(job, job["segments"], names)
 
 
 @router.post("/speakers/merge")
@@ -191,7 +192,7 @@ async def merge_speakers(job_id: str, body: MergeBody) -> dict[str, Any]:
     segments, names = _guard(
         lambda: speakers.merge(job["segments"], job.get("speaker_names", {}), body.source_ids, body.target_id)
     )
-    return _apply(job, segments, names)
+    return await _apply(job, segments, names)
 
 
 @router.post("/speakers/{speaker_id}/split")
@@ -199,7 +200,7 @@ async def split_speaker(job_id: str, speaker_id: str, body: SplitBody) -> dict[s
     """Split the chosen segments of a speaker off into a new speaker (returned as ``new_speaker_id``)."""
     job = _job(job_id)
     segments, new_id = _guard(lambda: speakers.split(job["segments"], speaker_id, body.segment_indices))
-    return {**_apply(job, segments, job.get("speaker_names", {})), "new_speaker_id": new_id}
+    return {**await _apply(job, segments, job.get("speaker_names", {})), "new_speaker_id": new_id}
 
 
 @router.post("/rediarize")
@@ -214,15 +215,18 @@ async def rediarize(job_id: str, body: RediarizeBody) -> dict[str, Any]:
     turns = await asyncio.to_thread(tx.run_diarizer, Path(audio), body.num_speakers)
     segments = speakers.parse_transcript(tx.label_transcript(raw, turns))
     job.update(num_speakers=body.num_speakers, translated_to=None)
-    return _apply(job, segments, {})
+    return await _apply(job, segments, {})
 
 
 @router.post("/translate")
 async def translate_job(job_id: str, body: TranslateBody) -> dict[str, Any]:
     """Translate the job into ``target_language``; speaker names are untouched and exports gain ``?translated=true``."""
     job = _job(job_id)
+    api_key = body.api_key
+    if not api_key and (body.engine or job.get("engine") or "openai") == "openai":
+        api_key = await tx.resolve_openai_key(job.get("user_id"), None)  # fall back to the key saved in the profile
     try:
-        await tx.translate_job_segments(job, body.api_key, body.target_language, engine=body.engine)
+        await tx.translate_job_segments(job, api_key, body.target_language, engine=body.engine)
     except EngineUnavailableError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
     except ValueError as exc:
@@ -231,4 +235,5 @@ async def translate_job(job_id: str, body: TranslateBody) -> dict[str, Any]:
         raise HTTPException(status_code=422 if "api_key" in str(exc) else 400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Translation failed: {exc!s}") from exc
+    await tx.persist(job["job_id"])
     return _view(job)

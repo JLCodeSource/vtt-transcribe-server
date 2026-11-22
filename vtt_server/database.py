@@ -59,14 +59,25 @@ except ImportError:
 
 def _add_missing_columns(sync_conn: Any) -> None:
     """Tiny forward-only migration: add columns introduced after a table was first created."""
-    from sqlalchemy import inspect, text
+    from sqlalchemy import ClauseElement, inspect, text
 
     inspector = inspect(sync_conn)
-    if "users" not in inspector.get_table_names():
-        return
-    existing = {c["name"] for c in inspector.get_columns("users")}
-    if "must_change_password" not in existing:
-        sync_conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT FALSE"))
+    dialect = sync_conn.dialect
+    for table in Base.metadata.sorted_tables:
+        if table.name not in inspector.get_table_names():
+            continue
+        existing = {c["name"] for c in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in existing:
+                continue
+            ddl = f"ALTER TABLE {table.name} ADD COLUMN {column.name} {column.type.compile(dialect=dialect)}"
+            default = column.server_default.arg if column.server_default is not None else None
+            if default is not None:
+                rendered = str(default.compile(dialect=dialect)) if isinstance(default, ClauseElement) else f"'{default}'"
+                ddl += f" DEFAULT {rendered}"
+            if not column.nullable and default is not None:
+                ddl += " NOT NULL"
+            sync_conn.execute(text(ddl))
 
 
 async def init_db() -> None:
