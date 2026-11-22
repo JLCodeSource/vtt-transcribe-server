@@ -57,6 +57,18 @@ except ImportError:
     database_available = False
 
 
+def _add_missing_columns(sync_conn: Any) -> None:
+    """Tiny forward-only migration: add columns introduced after a table was first created."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(sync_conn)
+    if "users" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("users")}
+    if "must_change_password" not in existing:
+        sync_conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT FALSE"))
+
+
 async def init_db() -> None:
     """Initialize database tables."""
     if not database_available or engine is None:
@@ -68,6 +80,7 @@ async def init_db() -> None:
 
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(_add_missing_columns)
     except ImportError:
         # Models not available, skip initialization
         pass

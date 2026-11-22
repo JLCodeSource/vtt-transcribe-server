@@ -6,7 +6,9 @@
   import FileUpload from './components/FileUpload.svelte';
   import TranscriptViewer from './components/TranscriptViewer.svelte';
   import SpeakerReview from './components/SpeakerReview.svelte';
-  import { fetchSegments, translateJob } from './api';
+  import { changePassword, fetchMe, fetchSegments, translateJob } from './api';
+  import Admin from './components/Admin.svelte';
+  import ChangePassword from './components/ChangePassword.svelte';
   import ProgressView from './components/ProgressView.svelte';
   import Login from './components/Login.svelte';
   import type { SegmentsResponse, TranscriptionJob, TranscriptSegment } from './types';
@@ -17,6 +19,8 @@
   let accessToken = $state<string | null>(null);
   let loginError = $state('');
   let loginLoading = $state(false);
+  let isAdmin = $state(false);
+  let mustChangePassword = $state(false);
 
   // Page navigation state
   let currentPage = $state('home');
@@ -124,6 +128,26 @@
     })();
   });
 
+  // Whenever we have a signed-in token, learn whether this user is an admin or must reset their password.
+  $effect(() => {
+    const token = accessToken;
+    if (!isAuthenticated || !token) return;
+    fetchMe(token)
+      .then((me) => {
+        isAdmin = me.is_superuser;
+        mustChangePassword = me.must_change_password;
+      })
+      .catch(() => {
+        /* a failure here must not lock anyone out; the server enforces the rules */
+      });
+  });
+
+  async function handleChangePassword(current: string, next: string) {
+    if (!accessToken) return;
+    await changePassword(accessToken, current, next);
+    mustChangePassword = false;
+  }
+
   async function loginWithPassword(usernameValue: string, passwordValue: string): Promise<string> {
     const formData = new URLSearchParams();
     formData.append('username', usernameValue);
@@ -207,6 +231,9 @@
     isAuthenticated = false;
     username = 'Guest';
     accessToken = null;
+    isAdmin = false;
+    mustChangePassword = false;
+    currentPage = 'home';
     localStorage.removeItem('access_token');
     localStorage.removeItem('username');
     currentJob = null;
@@ -299,8 +326,10 @@
       error={loginError}
     />
   </div>
+{:else if mustChangePassword}
+  <ChangePassword forced onsubmit={handleChangePassword} onlogout={handleLogout} />
 {:else}
-  <Navigation {currentPage} onnavigate={handleNavigate} />
+  <Navigation {currentPage} onnavigate={handleNavigate} showAdmin={isAdmin} />
 
   <div class="app-wrapper">
     <header class="app-header">
@@ -354,6 +383,14 @@
         </div>
         <div class="content-card">
           <p class="placeholder-text">Job history coming soon...</p>
+        </div>
+      {:else if currentPage === 'admin' && isAdmin && accessToken}
+        <div class="page-header">
+          <h2>🛡️ Administration</h2>
+          <p>Review users, deactivate or delete accounts, and force password resets</p>
+        </div>
+        <div class="content-card">
+          <Admin token={accessToken} currentUsername={username} />
         </div>
       {:else if currentPage === 'about'}
         <div class="page-header">

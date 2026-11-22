@@ -264,3 +264,32 @@ Potential improvements:
 - SSO integration (OAuth2 providers)
 - Audit logging
 - Key rotation automation
+
+
+## Administration
+
+Administrators (`is_superuser`) get an **Admin** page in the UI and these endpoints (all require an admin bearer token):
+
+| Endpoint | What it does |
+|---|---|
+| `GET /admin/users?q=&limit=&offset=` | list users (never includes password hashes), with job counts |
+| `GET /admin/users/{id}` | one user |
+| `POST /admin/users/{id}/deactivate` / `activate` | block or re-enable sign-in and API use (data is kept) |
+| `POST /admin/users/{id}/reset-password` | set a temporary password (generated unless `temporary_password` is given), returned once; the user must change it at next sign-in |
+| `POST /admin/users/{id}/make-admin` / `remove-admin` | grant or revoke admin rights |
+| `DELETE /admin/users/{id}` | permanently delete the user, their API keys, jobs and stored job files |
+
+Guards: you cannot deactivate, delete or demote yourself, and the last active administrator cannot be deactivated, deleted or demoted.
+
+A user flagged for a reset can sign in but every endpoint except `GET /auth/me` and `POST /auth/change-password` answers
+`403 Password change required` until they change it. Deactivated users get `403` at sign-in and `400` on existing tokens.
+Accounts that sign in through OAuth have no password to reset.
+
+### Making the first administrator
+
+Register normally, then promote the account on the server:
+
+```bash
+docker compose exec <service> python -m vtt_server.manage promote USERNAME
+python -m vtt_server.manage list
+```
