@@ -6,7 +6,7 @@
   import FileUpload from './components/FileUpload.svelte';
   import TranscriptViewer from './components/TranscriptViewer.svelte';
   import SpeakerReview from './components/SpeakerReview.svelte';
-  import { changePassword, fetchMe, fetchSegments, translateJob } from './api';
+  import { changePassword, fetchMe, fetchSegments, setAuthToken, translateJob } from './api';
   import Admin from './components/Admin.svelte';
   import ChangePassword from './components/ChangePassword.svelte';
   import ProgressView from './components/ProgressView.svelte';
@@ -126,6 +126,11 @@
         localStorage.removeItem('username');
       }
     })();
+  });
+
+  // Hand the token to the API layer before anything renders that needs it (every /api call requires it).
+  $effect.pre(() => {
+    setAuthToken(isAuthenticated ? accessToken : null);
   });
 
   // Whenever we have a signed-in token, learn whether this user is an admin or must reset their password.

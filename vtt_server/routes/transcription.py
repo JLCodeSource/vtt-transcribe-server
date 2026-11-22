@@ -12,13 +12,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 from vtt_transcribe import speakers
 from vtt_transcribe.logging_config import get_logger
 from vtt_transcribe.transcriber import VideoTranscriber
 from vtt_transcribe.translator import AudioTranslator
 
+from vtt_server.access import check_capacity, owned_job
+from vtt_server.auth import get_current_active_user
 from vtt_server.engines import (
     EngineUnavailableError,
     build_diarizer,
@@ -27,8 +29,10 @@ from vtt_server.engines import (
     make_local_translate_fn,
     validate_engine,
 )
+from vtt_server.models import User
 
-router = APIRouter(prefix="/api", tags=["transcription"])
+# Every /api route needs a signed-in, active user; job routes additionally require owning the job (see access.owned_job).
+router = APIRouter(prefix="/api", tags=["transcription"], dependencies=[Depends(get_current_active_user)])
 logger = get_logger(__name__)
 
 # Jobs dictionary now includes progress_updates queue for each job
@@ -131,6 +135,7 @@ async def create_transcription_job(
     translate_to: str | None = Form(None),
     engine: str = Form("openai"),
     num_speakers: int | None = Form(None),
+    user: User = Depends(get_current_active_user),
 ) -> dict[str, str]:
     """Create a new transcription job.
 
@@ -154,6 +159,7 @@ async def create_transcription_job(
         logger.warning("Job creation failed: missing filename")
         raise HTTPException(status_code=422, detail="File must have a filename")
 
+    check_capacity(user)
     _check_engine(engine, api_key)
     validate_num_speakers(num_speakers)
 
@@ -191,6 +197,7 @@ async def create_transcription_job(
 
     jobs[job_id] = {
         "job_id": job_id,
+        "user_id": user.id,
         "status": "pending",
         "filename": file.filename,
         "file_size": len(content),
@@ -224,22 +231,17 @@ async def create_transcription_job(
 
 
 @router.get("/jobs/{job_id}")
-async def get_job_status(job_id: str) -> dict[str, Any]:
+async def get_job_status(job: dict[str, Any] = Depends(owned_job)) -> dict[str, Any]:
     """Get status of a transcription job."""
-    if job_id not in jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
-
     # Exclude non-serialisable / bulky internals; speaker data has its own endpoints
-    hidden = {"progress_updates", "segments", "speaker_names", "audio_path", "raw_transcript"}
-    return {k: v for k, v in jobs[job_id].items() if k not in hidden}
+    hidden = {"progress_updates", "segments", "speaker_names", "audio_path", "raw_transcript", "user_id"}
+    return {k: v for k, v in job.items() if k not in hidden}
 
 
 @router.delete("/jobs/{job_id}", status_code=204)
-async def delete_job(job_id: str) -> None:
+async def delete_job(job: dict[str, Any] = Depends(owned_job)) -> None:
     """Delete a job and its stored audio."""
-    if job_id not in jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
-    await asyncio.to_thread(purge_job, job_id)
+    await asyncio.to_thread(purge_job, job["job_id"])
 
 
 @router.post("/detect-language")
@@ -335,6 +337,7 @@ async def translate_transcript(
 async def create_diarization_job(
     file: UploadFile = File(...),
     num_speakers: int | None = Form(None),
+    user: User = Depends(get_current_active_user),
 ) -> dict[str, str]:
     """Create a diarization-only job (who speaks when; no transcript, no API key).
 
@@ -348,11 +351,22 @@ async def create_diarization_job(
     if not file.filename:
         raise HTTPException(status_code=422, detail="File must have a filename")
 
+    check_capacity(user)
     validate_num_speakers(num_speakers)
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {file_ext}. Supported types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
+        )
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024 * 1024)}MB")
 
     job_id = str(uuid.uuid4())
     jobs[job_id] = {
         "job_id": job_id,
+        "user_id": user.id,
         "status": "pending",
         "filename": file.filename,
         "diarize_only": True,
@@ -361,7 +375,6 @@ async def create_diarization_job(
         "progress_updates": asyncio.Queue(maxsize=MAX_PROGRESS_QUEUE_SIZE),
     }
 
-    content = await file.read()
     task = asyncio.create_task(_process_diarization(job_id, content, file.filename, num_speakers))
     _ = task
 
@@ -645,7 +658,7 @@ _MEDIA_TYPES = {
 
 @router.get("/jobs/{job_id}/download")
 async def download_transcript(
-    job_id: str,
+    job: dict[str, Any] = Depends(owned_job),
     format: str = Query("txt", pattern="^(txt|vtt|srt|json)$"),  # noqa: A002
     translated: bool = Query(False, description="Export the translation instead of the original text"),  # noqa: FBT001, FBT003
 ) -> PlainTextResponse:
@@ -659,11 +672,6 @@ async def download_transcript(
     Returns:
         Formatted transcript file
     """
-    if job_id not in jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    job = jobs[job_id]
-
     if job["status"] != "completed":
         raise HTTPException(status_code=400, detail=f"Job not completed. Status: {job['status']}")
 

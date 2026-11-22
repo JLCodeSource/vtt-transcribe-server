@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { TranscriptSegment } from '../types';
+  import { authHeaders } from '../api';
 
   interface Props {
     segments: TranscriptSegment[];
@@ -69,7 +70,9 @@
 
   async function downloadTranscript(format: 'txt' | 'vtt' | 'srt' | 'json') {
     try {
-      const response = await fetch(`/api/jobs/${jobId}/download?format=${format}${hasTranslation && showTranslation ? '&translated=true' : ''}`);
+      const response = await fetch(`/api/jobs/${jobId}/download?format=${format}${hasTranslation && showTranslation ? '&translated=true' : ''}`, {
+        headers: authHeaders(),
+      });
       if (!response.ok) {
         throw new Error(`Download failed: ${response.statusText}`);
       }

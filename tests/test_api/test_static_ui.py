@@ -3,7 +3,10 @@
 import importlib
 import sys
 
+import pytest
 from fastapi.testclient import TestClient
+
+pytestmark = pytest.mark.usefixtures("fake_auth")
 
 
 def test_static_dir_serves_ui_and_keeps_api(tmp_path, monkeypatch):
@@ -15,7 +18,7 @@ def test_static_dir_serves_ui_and_keeps_api(tmp_path, monkeypatch):
     try:
         client = TestClient(app_module.app)
         assert "ui" in client.get("/").text
-        assert client.get("/api/engines").status_code == 200
+        assert client.get("/api/engines").status_code == 401  # the API is still served, and needs a login
         assert client.get("/health").status_code == 200
     finally:
         monkeypatch.delenv("VTT_STATIC_DIR")

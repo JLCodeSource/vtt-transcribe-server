@@ -1,15 +1,15 @@
 [project]
 name = "vtt-transcribe-server"
 version = "0.1.0"
-description = "Private FastAPI server (users, OAuth, DB, job API) built on the vtt-transcribe transcription package"
+description = "FastAPI server (users, OAuth, DB, job API) and web app built on the vtt-transcribe transcription package"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "Proprietary"}
+license = {text = "BSD-3-Clause"}
 authors = [
     {name = "JLCodeSource", email = "JLCodeSource@gmail.com"}
 ]
 classifiers = [
-    "Private :: Do Not Upload",
+    "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

@@ -19,6 +19,9 @@ TRANSCRIPT = (
 )
 
 
+pytestmark = pytest.mark.usefixtures("fake_auth")
+
+
 @pytest.fixture
 def client():
     from vtt_server.app import app

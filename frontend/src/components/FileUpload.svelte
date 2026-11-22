@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fetchEngines } from '../api';
+  import { authHeaders, fetchEngines } from '../api';
   import type { UploadOptions, TranscriptionJob, EnginesResponse } from '../types';
 
   interface Props {
@@ -142,6 +142,7 @@
 
       const response = await fetch('/api/transcribe', {
         method: 'POST',
+        headers: authHeaders(),
         body: formData,
       });
 

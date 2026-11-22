@@ -8,6 +8,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from vtt_server.access import RateLimiter, registration_open
 from vtt_server.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
@@ -22,6 +23,11 @@ from vtt_server.database import get_db
 from vtt_server.models import User
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
+
+# Sign-in and sign-up are brute-force targets: limit attempts per client address
+# (VTT_LOGIN_RATE_LIMIT / VTT_REGISTER_RATE_LIMIT per 5 minutes; 0 disables).
+login_limiter = RateLimiter("VTT_LOGIN_RATE_LIMIT", 10, 300)
+register_limiter = RateLimiter("VTT_REGISTER_RATE_LIMIT", 5, 300)
 
 
 # Request/Response models
@@ -67,9 +73,16 @@ class TokenData(BaseModel):
     username: str | None = None
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(register_limiter)],
+)
 async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)) -> User:
-    """Register a new user."""
+    """Register a new user (unless an administrator has switched sign-ups off with VTT_ALLOW_REGISTRATION=false)."""
+    if not registration_open():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Registration is closed")
     # Check if username already exists
     existing_user = await get_user_by_username(db, user_data.username)
     if existing_user:
@@ -103,7 +116,7 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)) ->
     return new_user
 
 
-@router.post("/token", response_model=Token)
+@router.post("/token", response_model=Token, dependencies=[Depends(login_limiter)])
 async def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: AsyncSession = Depends(get_db),

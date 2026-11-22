@@ -1,7 +1,17 @@
 import type { AdminUser, AdminUserList, EnginesResponse, Me, SegmentsResponse } from './types';
 
+/** The signed-in user's bearer token. The server requires it on every /api call. */
+let authToken: string | null = null;
+export const setAuthToken = (token: string | null) => {
+  authToken = token;
+};
+export const authHeaders = (): Record<string, string> => (authToken ? { Authorization: `Bearer ${authToken}` } : {});
+/** For URLs that cannot carry headers (an <audio src>, a WebSocket): the token goes in the query string instead. */
+export const withToken = (url: string) =>
+  authToken ? `${url}${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(authToken)}` : url;
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, { ...init, headers: { ...authHeaders(), ...((init?.headers as Record<string, string>) ?? {}) } });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
     throw new Error(typeof body.detail === 'string' ? body.detail : `Request failed: ${response.status}`);
@@ -43,10 +53,10 @@ export const translateJob = (id: string, targetLanguage: string, apiKey: string 
 /** Playable URL for a short sample of a speaker (an <audio src>). */
 export const clipUrl = (id: string, speakerId: string, start?: number, end?: number) => {
   const q = start !== undefined && end !== undefined ? `?start=${start}&end=${end}` : '';
-  return `${job(id)}/speakers/${encodeURIComponent(speakerId)}/clip${q}`;
+  return withToken(`${job(id)}/speakers/${encodeURIComponent(speakerId)}/clip${q}`);
 };
 
-// ---- account + admin (these need the bearer token; the job endpoints above do not) ----
+// ---- account + admin (explicit token, so they work before setAuthToken has run) ----
 const authed = (token: string, init: RequestInit = {}): RequestInit => ({
   ...init,
   headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },
