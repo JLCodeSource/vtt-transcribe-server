@@ -175,3 +175,8 @@ def test_release_notes_come_from_the_changelog():
     assert module.section(changelog, "0.1.0") == "First.\n- a"
     assert module.section(changelog, "0.3.0") is None
     assert module.section((ROOT / "docs" / "CHANGELOG.md").read_text(), "0.1.0")  # the version being released has notes
+
+
+def test_frontend_nginx_allows_uploads_up_to_the_server_limit():
+    conf = (ROOT / "frontend" / "nginx.conf").read_text()
+    assert "client_max_body_size 100m;" in conf  # nginx's default of 1 MB rejects ordinary audio files
