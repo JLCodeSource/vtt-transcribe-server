@@ -33,6 +33,14 @@
     { id: 'openai', label: 'OpenAI Whisper (API)', requires_api_key: true, available: true },
     { id: 'local', label: 'Local Whisper (no key)', requires_api_key: false, available: false },
   ]);
+  // A saved default (or the initial choice) can name an engine this server does not have: use one that works instead.
+  $effect(() => {
+    const chosen = engines.find((e) => e.id === options.engine);
+    if (chosen && !chosen.available) {
+      const fallback = engines.find((e) => e.available);
+      if (fallback) options.engine = fallback.id as UploadOptions['engine'];
+    }
+  });
   const needsKey = $derived((engines.find((e) => e.id === options.engine)?.requires_api_key ?? true) && !profileHasKey);
   let isUploading = $state(false);
 
