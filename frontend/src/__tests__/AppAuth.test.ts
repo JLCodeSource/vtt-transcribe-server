@@ -45,7 +45,7 @@ describe('App with Auth Integration', () => {
     await fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Drop your video file here/i)).toBeTruthy();
+      expect(screen.getByText(/Drop your video or audio files here/i)).toBeTruthy();
     });
 
     expect(localStorage.getItem('access_token')).toBe('new-user-token');
@@ -84,7 +84,7 @@ describe('App with Auth Integration', () => {
     });
 
     render(App);
-    expect(screen.queryByText(/Drop your video file here/i)).toBeFalsy();
+    expect(screen.queryByText(/Drop your video or audio files here/i)).toBeFalsy();
   });
 
   it('shows file upload after successful login', async () => {
@@ -104,7 +104,7 @@ describe('App with Auth Integration', () => {
     await fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Drop your video file here/i)).toBeTruthy();
+      expect(screen.getByText(/Drop your video or audio files here/i)).toBeTruthy();
     });
   });
 
@@ -187,7 +187,7 @@ describe('App with Auth Integration', () => {
     // Should skip login form and show file upload after validation
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: /Sign In/i })).toBeFalsy();
-      expect(screen.getByText(/Drop your video file here/i)).toBeTruthy();
+      expect(screen.getByText(/Drop your video or audio files here/i)).toBeTruthy();
       expect(screen.getByText('existinguser')).toBeTruthy();
     });
   });

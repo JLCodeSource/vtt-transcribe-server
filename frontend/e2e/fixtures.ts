@@ -29,7 +29,7 @@ export const test = base.extend({
     });
 
     await page.goto('/');
-    await expect(page.getByText(/Drop your video file here/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Drop your video or audio files here/i)).toBeVisible({ timeout: 15000 });
 
     // Use the authenticated page
     await use(page);

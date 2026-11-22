@@ -5,7 +5,7 @@ import FileUpload from '../components/FileUpload.svelte';
 describe('FileUpload', () => {
   it('renders the dropzone', () => {
     render(FileUpload, { props: { onuploadstart: () => {} } });
-    expect(screen.getByText(/Drop your video file here/i)).toBeTruthy();
+    expect(screen.getByText(/Drop your video or audio files here/i)).toBeTruthy();
   });
 
   it('shows the choose file button', () => {

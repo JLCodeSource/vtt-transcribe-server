@@ -37,7 +37,7 @@ describe('submitting a file', () => {
 
   it('goes straight to the Jobs page, which shows the queued job; the main page stays ready for more', async () => {
     const { container } = render(App);
-    await screen.findByText(/Drop your video file here/i);
+    await screen.findByText(/Drop your video or audio files here/i);
     const input = container.querySelector('#file-input') as HTMLInputElement;
     const file = new File(['abc'], 'talk.mp3', { type: 'audio/mpeg' });
     await fireEvent.change(input, { target: { files: [file] } });
@@ -52,6 +52,6 @@ describe('submitting a file', () => {
     expect((upload?.[1]?.body as FormData).get('api_key')).toBeFalsy(); // the profile key covers it
 
     await fireEvent.click(screen.getByRole('button', { name: /Home/ }));
-    await waitFor(() => expect(screen.getByText(/Drop your video file here/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Drop your video or audio files here/i)).toBeTruthy());
   });
 });
