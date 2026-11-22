@@ -45,6 +45,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: api
+      args:
+        # "--extra local" adds the key-free engine (faster-whisper + local translation; a larger image)
+        SYNC_ARGS: ${SYNC_ARGS:-}
     container_name: vtt-transcribe-api
     restart: unless-stopped
     environment:
