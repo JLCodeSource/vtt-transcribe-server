@@ -6,6 +6,8 @@ import pytest
 from authlib.integrations.starlette_client import OAuthError
 from fastapi.testclient import TestClient
 
+from tests import TEST_SECRET_KEY
+
 
 @pytest.fixture
 def client():
@@ -205,7 +207,7 @@ class TestOAuthCallback:
             patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
             patch(
                 "vtt_server.auth.SECRET_KEY",
-                "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512",
+                TEST_SECRET_KEY,
             ),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
@@ -255,7 +257,7 @@ class TestOAuthCallback:
             patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
             patch(
                 "vtt_server.auth.SECRET_KEY",
-                "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512",
+                TEST_SECRET_KEY,
             ),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
@@ -292,7 +294,7 @@ class TestOAuthCallback:
             patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
             patch(
                 "vtt_server.auth.SECRET_KEY",
-                "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512",
+                TEST_SECRET_KEY,
             ),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
@@ -341,7 +343,7 @@ class TestOAuthCallback:
             patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
             patch(
                 "vtt_server.auth.SECRET_KEY",
-                "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512",
+                TEST_SECRET_KEY,
             ),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
@@ -393,7 +395,7 @@ class TestOAuthCallback:
             patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
             patch(
                 "vtt_server.auth.SECRET_KEY",
-                "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512",
+                TEST_SECRET_KEY,
             ),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):

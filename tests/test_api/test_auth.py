@@ -7,6 +7,8 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from tests import TEST_SECRET_KEY
+
 pytestmark = pytest.mark.usefixtures("fake_auth")
 
 
@@ -523,7 +525,7 @@ class TestSecretKeyConfiguration:
         with patch.dict(
             "os.environ",
             {
-                "SECRET_KEY": "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512",
+                "SECRET_KEY": TEST_SECRET_KEY,
                 "ENCRYPTION_KEY": "NIiQ9PoBLY9fpqc_kWzhCE1EvcCpRzSZu9FT339Mz2k=",
                 "JWT_ALGORITHM": "",
             },
@@ -546,7 +548,7 @@ class TestSecretKeyConfiguration:
         with patch.dict(
             "os.environ",
             {
-                "SECRET_KEY": "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512",
+                "SECRET_KEY": TEST_SECRET_KEY,
                 "ENCRYPTION_KEY": "NIiQ9PoBLY9fpqc_kWzhCE1EvcCpRzSZu9FT339Mz2k=",
                 "JWT_ALGORITHM": algorithm,
             },
@@ -559,9 +561,7 @@ class TestSecretKeyConfiguration:
 
     def test_secret_key_from_environment(self) -> None:
         """Should use SECRET_KEY from environment if available."""
-        with patch.dict(
-            "os.environ", {"SECRET_KEY": "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512"}
-        ):
+        with patch.dict("os.environ", {"SECRET_KEY": TEST_SECRET_KEY}):
             # Reimport to get new SECRET_KEY
             import importlib
 
@@ -748,9 +748,7 @@ class TestAuthRoutes:
         from vtt_server.auth import create_access_token
 
         # Mock SECRET_KEY for test environment
-        with patch(
-            "vtt_server.auth.SECRET_KEY", "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512"
-        ):
+        with patch("vtt_server.auth.SECRET_KEY", TEST_SECRET_KEY):
             data: dict[str, str | datetime] = {"sub": "testuser"}
 
             # Call with None to trigger else branch on line 54
@@ -763,7 +761,7 @@ class TestAuthRoutes:
 
             decoded = jwt.decode(
                 token,
-                "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512",
+                TEST_SECRET_KEY,
                 algorithms=[ALGORITHM],
             )
 
@@ -783,9 +781,7 @@ class TestAuthRoutes:
         from vtt_server.auth import create_access_token
 
         # Mock SECRET_KEY for test environment
-        with patch(
-            "vtt_server.auth.SECRET_KEY", "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512"
-        ):
+        with patch("vtt_server.auth.SECRET_KEY", TEST_SECRET_KEY):
             now = datetime.now(UTC)
             data: dict[str, str | datetime] = {"sub": "testuser", "created_at": now}
 
@@ -799,7 +795,7 @@ class TestAuthRoutes:
 
             decoded = jwt.decode(
                 token,
-                "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512",
+                TEST_SECRET_KEY,
                 algorithms=[ALGORITHM],
             )
 

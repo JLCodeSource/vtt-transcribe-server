@@ -7,12 +7,11 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession
 from vtt_transcribe import speakers
 
+from tests.conftest import OpenDb
 from vtt_server import jobqueue, versions
-from vtt_server.database import Base
 from vtt_server.jobstore import store
 from vtt_server.models import User
 from vtt_server.routes.transcription import jobs
@@ -31,25 +30,19 @@ pytestmark = pytest.mark.usefixtures("fake_auth")
 
 
 @pytest.fixture
-def db() -> Iterator[Any]:
+def db(memory_db: OpenDb) -> Iterator[Any]:
     """An in-memory database behind the job store (as in test_queue)."""
-    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    async def setup() -> None:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        async with maker() as session:
-            session.add(User(username="alice", email="alice@example.com", hashed_password="x"))
-            await session.commit()
+    async def seed(session: AsyncSession) -> None:
+        session.add(User(username="alice", email="alice@example.com", hashed_password="x"))
+        await session.commit()
 
-    asyncio.run(setup())
+    maker = memory_db(seed)
     store.enabled = True
     store.session_factory = maker
     yield maker
     store.enabled = False
     store.session_factory = None
-    asyncio.run(engine.dispose())
 
 
 @pytest.fixture
