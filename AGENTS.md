@@ -49,7 +49,7 @@ docker run --rm -v "$PWD/frontend":/w -w /w node:22-slim bash -c \
 Browser e2e (`npm run test:e2e`) runs when you touch UI behaviour; it is manual in CI.
 
 These already fail on `main` (found by the audit). They are tracked as beads and fixed first; do not add to them and do not
-"fix" them inside an unrelated task: `ruff format --check` (4 files), `pytest -W error` (third-party `crypt`
+"fix" them inside an unrelated task: `pytest -W error` (third-party `crypt`
 DeprecationWarning breaks collection), `svelte-check` (13 errors in 2 test files), `npm run lint` (no ESLint 9 config),
 prettier (26 files).
 
