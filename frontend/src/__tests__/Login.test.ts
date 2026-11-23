@@ -3,13 +3,13 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import Login from '../components/Login.svelte';
 
 // Mock fetch globally
-global.fetch = vi.fn();
+globalThis.fetch = vi.fn();
 
 describe('Login', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Mock OAuth providers fetch that happens on mount
-    (global.fetch as any).mockResolvedValue({
+    (globalThis.fetch as any).mockResolvedValue({
       ok: false,
       json: async () => ({ providers: [] }),
     });

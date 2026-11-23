@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import App from '../App.svelte';
 
 // Mock fetch globally
-global.fetch = vi.fn();
+globalThis.fetch = vi.fn();
 
 describe('App with Auth Integration', () => {
   beforeEach(() => {
@@ -13,7 +13,7 @@ describe('App with Auth Integration', () => {
 
   it('shows login form when not authenticated', () => {
     // Mock OAuth providers fetch
-    (global.fetch as any).mockResolvedValue({
+    (globalThis.fetch as any).mockResolvedValue({
       ok: false,
       json: async () => ({ providers: [] }),
     });
@@ -24,7 +24,7 @@ describe('App with Auth Integration', () => {
   });
 
   it('registers a new user and logs in', async () => {
-    (global.fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({ ok: false, json: async () => ({ providers: [] }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1, username: 'newuser' }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'new-user-token', token_type: 'bearer' }) });
@@ -52,7 +52,7 @@ describe('App with Auth Integration', () => {
   });
 
   it('shows registration error when register call fails', async () => {
-    (global.fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({ ok: false, json: async () => ({ providers: [] }) })
       .mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ detail: 'Email already registered' }) });
 
@@ -78,7 +78,7 @@ describe('App with Auth Integration', () => {
 
   it('hides file upload when not authenticated', () => {
     // Mock OAuth providers fetch
-    (global.fetch as any).mockResolvedValue({
+    (globalThis.fetch as any).mockResolvedValue({
       ok: false,
       json: async () => ({ providers: [] }),
     });
@@ -89,7 +89,7 @@ describe('App with Auth Integration', () => {
 
   it('shows file upload after successful login', async () => {
     // Mock OAuth providers fetch on Login mount, then login request
-    (global.fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({ ok: false, json: async () => ({ providers: [] }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'fake-token', token_type: 'bearer' }) });
 
@@ -110,7 +110,7 @@ describe('App with Auth Integration', () => {
 
   it('shows error message on failed login', async () => {
     // Mock OAuth providers fetch, then failed login request
-    (global.fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({ ok: false, json: async () => ({ providers: [] }) })
       .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ detail: 'Incorrect username or password' }) });
 
@@ -131,7 +131,7 @@ describe('App with Auth Integration', () => {
 
   it('updates UserMenu with username after login', async () => {
     // Mock OAuth providers fetch, then login request
-    (global.fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({ ok: false, json: async () => ({ providers: [] }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'fake-token', token_type: 'bearer' }) });
 
@@ -152,7 +152,7 @@ describe('App with Auth Integration', () => {
 
   it('persists token in localStorage after login', async () => {
     // Mock OAuth providers fetch, then login request
-    (global.fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({ ok: false, json: async () => ({ providers: [] }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'fake-token-12345', token_type: 'bearer' }) });
 
@@ -178,7 +178,7 @@ describe('App with Auth Integration', () => {
     // When App mounts, Login initially renders (isAuthenticated=false) and fetches OAuth providers
     // Then App's onMount validates token with /auth/me
     // If valid, Login unmounts (no longer authenticated state)
-    (global.fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({ ok: false, json: async () => ({ providers: [] }) }) // Login's OAuth providers fetch
       .mockResolvedValueOnce({ ok: true, json: async () => ({ username: 'existinguser', email: 'user@example.com' }) }); // App's /auth/me
 
@@ -198,7 +198,7 @@ describe('App with Auth Integration', () => {
 
     // Initial: OAuth providers fetch, then /auth/me validates session
     // After logout: OAuth providers fetch again when Login re-renders
-    (global.fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({ ok: false, json: async () => ({ providers: [] }) }) // Initial OAuth providers
       .mockResolvedValueOnce({ ok: true, json: async () => ({ username: 'existinguser', email: 'user@example.com' }) }) // /auth/me validation
       .mockResolvedValueOnce({ ok: false, json: async () => ({ providers: [] }) }); // OAuth providers after logout
