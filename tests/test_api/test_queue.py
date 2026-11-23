@@ -9,13 +9,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tests import TEST_SECRET_KEY
+from tests.conftest import OpenDb
 from vtt_server import jobqueue, mailer, retention, versions
 from vtt_server.app import app
 from vtt_server.auth import get_password_hash
-from vtt_server.database import Base, get_db
+from vtt_server.database import get_db
 from vtt_server.jobstore import store
 from vtt_server.models import User
 from vtt_server.routes import transcription as tx
@@ -41,25 +42,18 @@ def clean_jobs() -> Iterator[dict[str, dict[str, Any]]]:
 
 
 @pytest.fixture
-def db() -> Iterator[async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+def db(memory_db: OpenDb) -> Iterator[async_sessionmaker[AsyncSession]]:
+    async def seed(session: AsyncSession) -> None:
+        hashed = get_password_hash(PASSWORD)
+        session.add(User(username="alice", email="alice@example.com", hashed_password=hashed))
+        session.add(User(username="bob", email="bob@example.com", hashed_password=hashed))
+        await session.commit()
 
-    async def setup() -> None:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        async with maker() as session:
-            hashed = get_password_hash(PASSWORD)
-            session.add(User(username="alice", email="alice@example.com", hashed_password=hashed))
-            session.add(User(username="bob", email="bob@example.com", hashed_password=hashed))
-            await session.commit()
-
-    asyncio.run(setup())
+    maker = memory_db(seed)
     store.enabled = True
     store.session_factory = maker
     yield maker
     store.enabled = False
-    asyncio.run(engine.dispose())
 
 
 # ---- worker ----
@@ -270,7 +264,7 @@ def client(
     db: async_sessionmaker[AsyncSession], clean_jobs: dict[str, dict[str, Any]], tmp_path: Any, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[TestClient]:
     monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
-    monkeypatch.setattr("vtt_server.auth.SECRET_KEY", "test-secret-key-for-jwt-signing-only")  # other tests reload auth
+    monkeypatch.setattr("vtt_server.auth.SECRET_KEY", TEST_SECRET_KEY)  # other tests reload auth
 
     async def override() -> AsyncGenerator[AsyncSession, None]:
         async with db() as session:

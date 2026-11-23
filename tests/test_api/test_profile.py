@@ -9,13 +9,14 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tests import TEST_SECRET_KEY
+from tests.conftest import OpenDb
 from vtt_server import mailer
 from vtt_server.app import app
 from vtt_server.auth import get_password_hash
-from vtt_server.database import Base, get_db
+from vtt_server.database import get_db
 from vtt_server.models import APIKey, User
 from vtt_server.routes import transcription as tx
 
@@ -24,27 +25,19 @@ SECRET = "sk-test-0123456789abcdef"
 
 
 @pytest.fixture
-def db() -> Iterator[async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+def db(memory_db: OpenDb) -> async_sessionmaker[AsyncSession]:
+    async def seed(session: AsyncSession) -> None:
+        hashed = get_password_hash(PASSWORD)
+        session.add(User(username="admin", email="admin@example.com", hashed_password=hashed, is_superuser=True))
+        session.add(User(username="alice", email="alice@example.com", hashed_password=hashed))
+        await session.commit()
 
-    async def setup() -> None:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        async with maker() as session:
-            hashed = get_password_hash(PASSWORD)
-            session.add(User(username="admin", email="admin@example.com", hashed_password=hashed, is_superuser=True))
-            session.add(User(username="alice", email="alice@example.com", hashed_password=hashed))
-            await session.commit()
-
-    asyncio.run(setup())
-    yield maker
-    asyncio.run(engine.dispose())
+    return memory_db(seed)
 
 
 @pytest.fixture
 def client(db: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> Iterator[TestClient]:
-    monkeypatch.setattr("vtt_server.auth.SECRET_KEY", "test-secret-key-for-jwt-signing-only")  # other tests reload auth
+    monkeypatch.setattr("vtt_server.auth.SECRET_KEY", TEST_SECRET_KEY)  # other tests reload auth
     monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
 
     async def override() -> AsyncGenerator[AsyncSession, None]:
