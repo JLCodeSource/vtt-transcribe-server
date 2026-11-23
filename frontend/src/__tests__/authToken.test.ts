@@ -3,7 +3,14 @@ import { authHeaders, clipUrl, fetchEngines, setAuthToken, withToken } from '../
 
 describe('auth token on API calls', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ engines: [], diarizers: [], max_speakers: 12 }) })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ engines: [], diarizers: [], max_speakers: 12 }),
+      }))
+    );
   });
   afterEach(() => setAuthToken(null));
 
@@ -36,7 +43,11 @@ describe('auth token on API calls', () => {
 
   it('adds the token to speaker clip URLs, with or without a time range', () => {
     setAuthToken('tok');
-    expect(clipUrl('j1', 'SPEAKER_00')).toBe('/api/jobs/j1/speakers/SPEAKER_00/clip?access_token=tok');
-    expect(clipUrl('j1', 'SPEAKER_00', 1, 4)).toBe('/api/jobs/j1/speakers/SPEAKER_00/clip?start=1&end=4&access_token=tok');
+    expect(clipUrl('j1', 'SPEAKER_00')).toBe(
+      '/api/jobs/j1/speakers/SPEAKER_00/clip?access_token=tok'
+    );
+    expect(clipUrl('j1', 'SPEAKER_00', 1, 4)).toBe(
+      '/api/jobs/j1/speakers/SPEAKER_00/clip?start=1&end=4&access_token=tok'
+    );
   });
 });

@@ -13,9 +13,11 @@
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'jobs', label: 'Jobs', icon: '📋' },
     { id: 'profile', label: 'Profile', icon: '👤' },
-    { id: 'about', label: 'About', icon: 'ℹ️' }
+    { id: 'about', label: 'About', icon: 'ℹ️' },
   ];
-  const menuItems = $derived(showAdmin ? [...baseItems, { id: 'admin', label: 'Admin', icon: '🛡️' }] : baseItems);
+  const menuItems = $derived(
+    showAdmin ? [...baseItems, { id: 'admin', label: 'Admin', icon: '🛡️' }] : baseItems
+  );
 
   function handleNavigate(page: string) {
     open = false;
@@ -53,7 +55,7 @@
     aria-expanded={open}
     aria-controls="nav-menu"
     onclick={() => (open = !open)}
-    >
+  >
     {open ? '✕' : '☰'}
   </button>
 </nav>

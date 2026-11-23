@@ -22,7 +22,13 @@
   import Jobs from './components/Jobs.svelte';
   import Profile from './components/Profile.svelte';
   import Login from './components/Login.svelte';
-  import type { JobSummary, SegmentsResponse, TranscriptionJob, TranscriptSegment, VersionsResponse } from './types';
+  import type {
+    JobSummary,
+    SegmentsResponse,
+    TranscriptionJob,
+    TranscriptSegment,
+    VersionsResponse,
+  } from './types';
 
   // Auth state
   let isAuthenticated = $state(false);
@@ -34,7 +40,8 @@
   let mustChangePassword = $state(false);
 
   // Opening a link from the "job finished" email (?job=<id>) lands on that job
-  const focusJobId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('job') : null;
+  const focusJobId =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('job') : null;
 
   // Page navigation state
   let currentPage = $state(focusJobId ? 'jobs' : 'home');
@@ -52,10 +59,12 @@
   // User-friendly error messages for OAuth errors
   const oauthErrorMessages: Record<string, string> = {
     oauth_failed: 'Authentication failed. Please try again or use a different login method.',
-    no_email: 'We couldn\'t retrieve your email address. Please ensure your email is visible in your provider settings and try again.',
+    no_email:
+      "We couldn't retrieve your email address. Please ensure your email is visible in your provider settings and try again.",
     invalid_provider: 'Invalid authentication provider. Please use one of the supported providers.',
     username_unavailable: 'Unable to create your account. Please contact support for assistance.',
-    account_mismatch: 'This email is already registered with a different login method. Please use your original login method.',
+    account_mismatch:
+      'This email is already registered with a different login method. Please use your original login method.',
   };
 
   // Restore and validate session from localStorage on mount
@@ -213,7 +222,9 @@
     }
   }
 
-  async function handleRegister(event: CustomEvent<{ username: string; email: string; password: string }>) {
+  async function handleRegister(
+    event: CustomEvent<{ username: string; email: string; password: string }>
+  ) {
     loginLoading = true;
     loginError = '';
 
@@ -288,7 +299,11 @@
     if (!currentJob) return;
     const id = currentJob.job_id;
     versions = await fetchVersions(id);
-    if (viewLanguage !== 'original' && !versions.translations.some((t) => t.language === viewLanguage)) viewLanguage = 'original';
+    if (
+      viewLanguage !== 'original' &&
+      !versions.translations.some((t) => t.language === viewLanguage)
+    )
+      viewLanguage = 'original';
     applySegments(await fetchSegments(id, viewLanguage));
   }
 
@@ -464,10 +479,15 @@
     </main>
 
     <footer class="app-footer">
-      <p>Powered by OpenAI Whisper &amp; sherpa-onnx · <a href="https://github.com/JLCodeSource/vtt-transcribe-server">Source on GitHub</a></p>
+      <p>
+        Powered by OpenAI Whisper &amp; sherpa-onnx · <a
+          href="https://github.com/JLCodeSource/vtt-transcribe-server"
+        >
+          Source on GitHub
+        </a>
+      </p>
     </footer>
   </div>
-
 {/if}
 
 <style>

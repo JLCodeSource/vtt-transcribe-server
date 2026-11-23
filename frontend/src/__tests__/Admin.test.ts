@@ -18,17 +18,27 @@ const user = (over: Record<string, unknown> = {}) => ({
 });
 
 const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
-const calls = () => (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, RequestInit?]>;
+const calls = () =>
+  (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, RequestInit?]>;
 
 describe('Admin', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
-    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true)
+    );
   });
 
   it('lists users with the bearer token and hides actions on your own row', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      ok({ total: 2, users: [user(), user({ id: 1, username: 'admin', email: 'admin@example.com', is_superuser: true })] }),
+      ok({
+        total: 2,
+        users: [
+          user(),
+          user({ id: 1, username: 'admin', email: 'admin@example.com', is_superuser: true }),
+        ],
+      })
     );
     render(Admin, { token: 'tok', currentUsername: 'admin' });
     await screen.findByText('alice@example.com');
@@ -73,7 +83,11 @@ describe('Admin', () => {
 
     f.mockResolvedValueOnce({ ok: true, status: 204, json: async () => ({}) });
     await fireEvent.click(screen.getByText('Delete'));
-    await waitFor(() => expect(calls().some(([u, init]) => u === '/admin/users/2' && init?.method === 'DELETE')).toBe(true));
+    await waitFor(() =>
+      expect(calls().some(([u, init]) => u === '/admin/users/2' && init?.method === 'DELETE')).toBe(
+        true
+      )
+    );
   });
 
   it('shows the server error when an action is refused', async () => {

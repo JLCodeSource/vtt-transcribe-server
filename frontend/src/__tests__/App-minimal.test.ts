@@ -22,10 +22,10 @@ describe('App-minimal', () => {
 
   it('increments counter when button is clicked', async () => {
     render(AppMinimal);
-    
+
     const button = screen.getByRole('button', { name: /Click me!/i });
     await fireEvent.click(button);
-    
+
     expect(screen.getByText(/Test Counter: 1/i)).toBeTruthy();
   });
 

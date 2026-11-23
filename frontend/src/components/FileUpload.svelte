@@ -41,7 +41,9 @@
       if (fallback) options.engine = fallback.id as UploadOptions['engine'];
     }
   });
-  const needsKey = $derived((engines.find((e) => e.id === options.engine)?.requires_api_key ?? true) && !profileHasKey);
+  const needsKey = $derived(
+    (engines.find((e) => e.id === options.engine)?.requires_api_key ?? true) && !profileHasKey
+  );
   let isUploading = $state(false);
 
   onMount(() => {
@@ -49,8 +51,10 @@
       .then((p) => {
         profileHasKey = p.has_openai_key;
         if (p.default_options.engine) options.engine = p.default_options.engine;
-        if (p.default_options.diarize !== undefined) options.diarization = p.default_options.diarize;
-        if (p.default_options.num_speakers) options.numSpeakers = String(p.default_options.num_speakers);
+        if (p.default_options.diarize !== undefined)
+          options.diarization = p.default_options.diarize;
+        if (p.default_options.num_speakers)
+          options.numSpeakers = String(p.default_options.num_speakers);
         if (p.default_options.translate_to) options.translateTo = p.default_options.translate_to;
       })
       .catch(() => {
@@ -71,7 +75,7 @@
   $effect(() => {
     if (typeof window !== 'undefined') {
       const savedApiKey = sessionStorage.getItem('openai_api_key');
-      
+
       if (savedApiKey) {
         options.apiKey = savedApiKey;
       }
@@ -82,20 +86,23 @@
   const SUPPORTED_AUDIO_TYPES = ['.mp3', '.wav', '.ogg', '.m4a', '.mpga'];
   // The server's MAX_UPLOAD_SIZE arrives with the engine list; until then assume its default.
   let maxFileSize = $state(4 * 1024 ** 3);
-  const limitLabel = (bytes: number) => (bytes >= 1024 ** 3 ? `${+(bytes / 1024 ** 3).toFixed(1)} GB` : `${Math.round(bytes / 1024 / 1024)} MB`);
+  const limitLabel = (bytes: number) =>
+    bytes >= 1024 ** 3
+      ? `${+(bytes / 1024 ** 3).toFixed(1)} GB`
+      : `${Math.round(bytes / 1024 / 1024)} MB`;
 
   function validateFile(file: File): string | null {
     const ext = '.' + file.name.split('.').pop()?.toLowerCase();
     const allSupported = [...SUPPORTED_VIDEO_TYPES, ...SUPPORTED_AUDIO_TYPES];
-    
+
     if (!allSupported.includes(ext)) {
       return `Unsupported file type: ${ext}. Supported types: ${allSupported.join(', ')}`;
     }
-    
+
     if (file.size > maxFileSize) {
       return `File too large: ${sizeLabel(file.size)}. Maximum: ${limitLabel(maxFileSize)}`;
     }
-    
+
     return null;
   }
 
@@ -108,7 +115,8 @@
     isDragging = false;
   }
 
-  const sameFile = (a: File, b: File) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+  const sameFile = (a: File, b: File) =>
+    a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
 
   /** Add valid files to the list (duplicates ignored) and report the ones that were rejected. */
   function addFiles(incoming: FileList | File[] | null | undefined) {
@@ -160,7 +168,8 @@
     }
     if (options.retentionMode) {
       formData.append('retention_mode', options.retentionMode);
-      if (options.retentionMode === 'hold') formData.append('retention_days', options.retentionDays || '7');
+      if (options.retentionMode === 'hold')
+        formData.append('retention_days', options.retentionDays || '7');
     }
     if (options.translateTo?.trim()) {
       formData.append('translate_to', options.translateTo.trim());
@@ -176,7 +185,9 @@
     });
 
     if (!response.ok) {
-      const errorData = (await response.json().catch(() => ({ detail: response.statusText }))) as { detail?: string };
+      const errorData = (await response.json().catch(() => ({ detail: response.statusText }))) as {
+        detail?: string;
+      };
       throw new Error(errorData.detail || `Upload failed: ${response.statusText}`);
     }
     return (await response.json()) as TranscriptionJob;
@@ -212,7 +223,9 @@
     if (failure) {
       validationError =
         `Queued ${queued.length} of ${queued.length + selectedFiles.length}. Could not queue ${failure}` +
-        (selectedFiles.length > 1 ? `\nThe ${selectedFiles.length} files that were not queued are still listed.` : '');
+        (selectedFiles.length > 1
+          ? `\nThe ${selectedFiles.length} files that were not queued are still listed.`
+          : '');
     } else if (queued.length > 0) {
       // The app moves on to the Jobs page, where the jobs wait their turn in the queue
       onuploadstart(new CustomEvent<TranscriptionJob>('uploadstart', { detail: queued[0] }));
@@ -220,9 +233,12 @@
   }
 
   const AUDIO_EXT = ['.mp3', '.wav', '.ogg', '.m4a', '.mpga'];
-  const kindIcon = (file: File) => (AUDIO_EXT.some((e) => file.name.toLowerCase().endsWith(e)) ? '🎧' : '🎬');
+  const kindIcon = (file: File) =>
+    AUDIO_EXT.some((e) => file.name.toLowerCase().endsWith(e)) ? '🎧' : '🎬';
   const sizeLabel = (bytes: number) =>
-    bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    bytes < 1024 * 1024
+      ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+      : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
   function clearFiles() {
     selectedFiles = [];
@@ -243,7 +259,13 @@
   >
     {#if selectedFiles.length === 0}
       <div class="dropzone-content">
-        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+        <svg
+          class="upload-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          aria-hidden="true"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -253,10 +275,17 @@
         </svg>
         <h3>Drop your video or audio files here</h3>
         <p class="muted">or</p>
-        <button type="button" class="primary lg" onclick={() => document.getElementById('file-input')?.click()}>
+        <button
+          type="button"
+          class="primary lg"
+          onclick={() => document.getElementById('file-input')?.click()}
+        >
           Choose Files
         </button>
-        <p class="help">Supports MP4, AVI, MOV, MP3, WAV, and more. Pick as many files as you like; each is queued separately.</p>
+        <p class="help">
+          Supports MP4, AVI, MOV, MP3, WAV, and more. Pick as many files as you like; each is queued
+          separately.
+        </p>
       </div>
     {:else}
       <ul class="file-list" aria-label="Selected files">
@@ -281,19 +310,40 @@
         {/each}
       </ul>
       <div class="file-actions">
-        <button type="button" class="sm" onclick={() => document.getElementById('file-input')?.click()} disabled={isUploading}>
+        <button
+          type="button"
+          class="sm"
+          onclick={() => document.getElementById('file-input')?.click()}
+          disabled={isUploading}
+        >
           Add more files
         </button>
-        <button type="button" class="sm ghost" onclick={clearFiles} disabled={isUploading}>Clear all</button>
+        <button type="button" class="sm ghost" onclick={clearFiles} disabled={isUploading}>
+          Clear all
+        </button>
       </div>
     {/if}
-    <input id="file-input" type="file" multiple accept="video/*,audio/*" onchange={handleFileSelect} hidden />
+    <input
+      id="file-input"
+      type="file"
+      multiple
+      accept="video/*,audio/*"
+      onchange={handleFileSelect}
+      hidden
+    />
   </div>
 
   {#if validationError}
     <div class="notice error" role="alert">
       <span class="message">{validationError}</span>
-      <button type="button" class="icon" aria-label="Dismiss" onclick={() => (validationError = '')}>✕</button>
+      <button
+        type="button"
+        class="icon"
+        aria-label="Dismiss"
+        onclick={() => (validationError = '')}
+      >
+        ✕
+      </button>
     </div>
   {/if}
 
@@ -306,7 +356,9 @@
           <span>Engine</span>
           <select bind:value={options.engine} disabled={isUploading} aria-label="Engine">
             {#each engines as e (e.id)}
-              <option value={e.id} disabled={!e.available}>{e.label}{e.available ? '' : ' — not installed'}</option>
+              <option value={e.id} disabled={!e.available}>
+                {e.label}{e.available ? '' : ' — not installed'}
+              </option>
             {/each}
           </select>
         </label>
@@ -314,8 +366,17 @@
         {#if needsKey}
           <label class="field">
             <span>OpenAI API Key <span class="required">*</span></span>
-            <input type="password" bind:value={options.apiKey} placeholder="sk-..." disabled={isUploading} required />
-            <span class="help">Required for transcription with the OpenAI engine. Save one on the Profile page to skip this.</span>
+            <input
+              type="password"
+              bind:value={options.apiKey}
+              placeholder="sk-..."
+              disabled={isUploading}
+              required
+            />
+            <span class="help">
+              Required for transcription with the OpenAI engine. Save one on the Profile page to
+              skip this.
+            </span>
           </label>
         {/if}
 
@@ -348,7 +409,9 @@
           <span>Translate to (optional)</span>
           <select bind:value={options.translateTo} disabled={isUploading} aria-label="Translate to">
             <option value="">No translation</option>
-            {#each languageChoices(languages, options.translateTo ?? '') as l (l)}<option value={l}>{l}</option>{/each}
+            {#each languageChoices(languages, options.translateTo ?? '') as l (l)}<option value={l}>
+                {l}
+              </option>{/each}
           </select>
           <span class="help">Needs an OpenAI API key (unless you use the local engine)</span>
         </label>
@@ -366,7 +429,14 @@
         {#if options.retentionMode === 'hold'}
           <label class="field">
             <span>Days to keep</span>
-            <input type="number" min="1" max="3650" bind:value={options.retentionDays} disabled={isUploading} aria-label="Days to keep" />
+            <input
+              type="number"
+              min="1"
+              max="3650"
+              bind:value={options.retentionDays}
+              disabled={isUploading}
+              aria-label="Days to keep"
+            />
           </label>
         {/if}
       </div>
@@ -376,14 +446,20 @@
           <input type="checkbox" bind:checked={options.diarization} disabled={isUploading} />
           <span>
             <strong>Enable Speaker Diarization</strong>
-            <span class="help block">Identify different speakers (runs on the server, no token needed)</span>
+            <span class="help block">
+              Identify different speakers (runs on the server, no token needed)
+            </span>
           </span>
         </label>
 
         {#if options.diarization}
           <label class="field speakers">
             <span>Number of speakers</span>
-            <select bind:value={options.numSpeakers} disabled={isUploading} aria-label="Number of speakers">
+            <select
+              bind:value={options.numSpeakers}
+              disabled={isUploading}
+              aria-label="Number of speakers"
+            >
               <option value="auto">Auto-detect</option>
               {#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}<option value={String(n)}>{n}</option>{/each}
             </select>
@@ -391,8 +467,17 @@
         {/if}
       </div>
 
-      <button type="button" class="primary lg upload-btn" onclick={handleUpload} disabled={isUploading}>
-        {isUploading ? 'Uploading...' : selectedFiles.length > 1 ? `Add ${selectedFiles.length} files to queue` : 'Add to queue'}
+      <button
+        type="button"
+        class="primary lg upload-btn"
+        onclick={handleUpload}
+        disabled={isUploading}
+      >
+        {isUploading
+          ? 'Uploading...'
+          : selectedFiles.length > 1
+            ? `Add ${selectedFiles.length} files to queue`
+            : 'Add to queue'}
       </button>
     </div>
   {/if}

@@ -39,7 +39,10 @@
   <form class="card form" onsubmit={submit}>
     <h2>{forced ? 'Choose a new password' : 'Change password'}</h2>
     {#if forced}
-      <p class="note">An administrator has reset your password. Enter the temporary password you were given, then choose your own.</p>
+      <p class="note">
+        An administrator has reset your password. Enter the temporary password you were given, then
+        choose your own.
+      </p>
     {/if}
     {#if error}<p class="notice error" role="alert">{error}</p>{/if}
     <label class="field">
@@ -52,9 +55,17 @@
     </label>
     <label class="field">
       Repeat new password
-      <input type="password" bind:value={confirm} autocomplete="new-password" required minlength="8" />
+      <input
+        type="password"
+        bind:value={confirm}
+        autocomplete="new-password"
+        required
+        minlength="8"
+      />
     </label>
-    <button type="submit" class="primary lg" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</button>
+    <button type="submit" class="primary lg" disabled={busy}>
+      {busy ? 'Saving…' : 'Change password'}
+    </button>
     {#if onlogout}<button type="button" class="ghost" onclick={onlogout}>Sign out</button>{/if}
   </form>
 </div>

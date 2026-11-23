@@ -5,7 +5,9 @@
     loading?: boolean;
     error?: string;
     onlogin?: (event: CustomEvent<{ username: string; password: string }>) => void;
-    onregister?: (event: CustomEvent<{ username: string; email: string; password: string }>) => void;
+    onregister?: (
+      event: CustomEvent<{ username: string; email: string; password: string }>
+    ) => void;
   }
 
   let { loading = false, error = '', onlogin, onregister }: Props = $props();
@@ -124,13 +126,13 @@
     </form>
 
     {#if onregister}
-    <div class="register-link">
-      <span>{isRegisterMode ? 'Already have an account?' : "Don't have an account?"}</span>
-      <button type="button" onclick={toggleMode} class="link link-button">
-        {isRegisterMode ? 'Sign In' : 'Register'}
-      </button>
-    </div>
-  {/if}
+      <div class="register-link">
+        <span>{isRegisterMode ? 'Already have an account?' : "Don't have an account?"}</span>
+        <button type="button" onclick={toggleMode} class="link link-button">
+          {isRegisterMode ? 'Sign In' : 'Register'}
+        </button>
+      </div>
+    {/if}
   </div>
 </div>
 

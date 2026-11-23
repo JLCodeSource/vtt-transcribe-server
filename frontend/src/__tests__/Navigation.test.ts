@@ -68,7 +68,7 @@ describe('Navigation', () => {
     it('only one page is active at a time', () => {
       render(Navigation, { props: { currentPage: 'jobs' } });
       const buttons = screen.getAllByRole('button');
-      const activeButtons = buttons.filter(btn => btn.classList.contains('active'));
+      const activeButtons = buttons.filter((btn) => btn.classList.contains('active'));
       expect(activeButtons.length).toBe(1);
     });
   });
@@ -190,7 +190,9 @@ describe('Navigation', () => {
     it('marks the current page for assistive technology', () => {
       render(Navigation, { props: { currentPage: 'jobs' } });
       expect(screen.getByText('Jobs').closest('button')?.getAttribute('aria-current')).toBe('page');
-      expect(screen.getByText('Profile').closest('button')?.getAttribute('aria-current')).toBeNull();
+      expect(
+        screen.getByText('Profile').closest('button')?.getAttribute('aria-current')
+      ).toBeNull();
     });
   });
 
@@ -210,7 +212,7 @@ describe('Navigation', () => {
     it('all navigation items are keyboard accessible buttons', () => {
       render(Navigation);
       const buttons = screen.getAllByRole('button');
-      buttons.forEach(button => {
+      buttons.forEach((button) => {
         expect(button.tagName).toBe('BUTTON');
       });
     });

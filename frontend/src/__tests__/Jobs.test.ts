@@ -17,12 +17,16 @@ const job = (over: Record<string, unknown> = {}) => ({
 });
 const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
 const list = (jobs: unknown[]) => ok({ jobs, queue_length: jobs.length, running: null });
-const calls = () => (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, RequestInit?]>;
+const calls = () =>
+  (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, RequestInit?]>;
 
 describe('Jobs page', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
-    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true)
+    );
   });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -36,7 +40,15 @@ describe('Jobs page', () => {
 
   it('shows the pipeline step and a percentage for the running job', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      list([job({ status: 'processing', step: 'transcribing', progress: 0.42, queue_position: null, message: 'Transcribing audio' })]),
+      list([
+        job({
+          status: 'processing',
+          step: 'transcribing',
+          progress: 0.42,
+          queue_position: null,
+          message: 'Transcribing audio',
+        }),
+      ])
     );
     render(Jobs, { onopen: () => {} });
     await screen.findByText(/Transcribing — Transcribing audio/);
@@ -46,7 +58,15 @@ describe('Jobs page', () => {
 
   it('does not repeat the step label when the message is the same', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      list([job({ status: 'processing', step: 'detecting', progress: 0.02, queue_position: null, message: 'Detecting language' })]),
+      list([
+        job({
+          status: 'processing',
+          step: 'detecting',
+          progress: 0.02,
+          queue_position: null,
+          message: 'Detecting language',
+        }),
+      ])
     );
     render(Jobs, { onopen: () => {} });
     const step = await screen.findByText('Detecting language');
@@ -56,16 +76,39 @@ describe('Jobs page', () => {
   it('orders running first, then the queue in order, then finished newest first', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       list([
-        job({ job_id: 'old', filename: 'old.mp3', status: 'completed', step: 'done', queue_position: null, completed_at: '2026-01-01T10:00:00Z' }),
+        job({
+          job_id: 'old',
+          filename: 'old.mp3',
+          status: 'completed',
+          step: 'done',
+          queue_position: null,
+          completed_at: '2026-01-01T10:00:00Z',
+        }),
         job({ job_id: 'q2', filename: 'q2.mp3', queue_position: 2 }),
-        job({ job_id: 'new', filename: 'new.mp3', status: 'completed', step: 'done', queue_position: null, completed_at: '2026-02-01T10:00:00Z' }),
+        job({
+          job_id: 'new',
+          filename: 'new.mp3',
+          status: 'completed',
+          step: 'done',
+          queue_position: null,
+          completed_at: '2026-02-01T10:00:00Z',
+        }),
         job({ job_id: 'q1', filename: 'q1.mp3', queue_position: 1 }),
-        job({ job_id: 'run', filename: 'run.mp3', status: 'processing', step: 'transcribing', progress: 0.5, queue_position: null }),
-      ]),
+        job({
+          job_id: 'run',
+          filename: 'run.mp3',
+          status: 'processing',
+          step: 'transcribing',
+          progress: 0.5,
+          queue_position: null,
+        }),
+      ])
     );
     render(Jobs, { onopen: () => {} });
     await screen.findByText('run.mp3');
-    const names = screen.getAllByTestId('job-row').map((r) => r.querySelector('.name')?.textContent);
+    const names = screen
+      .getAllByTestId('job-row')
+      .map((r) => r.querySelector('.name')?.textContent);
     expect(names).toEqual(['run.mp3', 'q1.mp3', 'q2.mp3', 'new.mp3', 'old.mp3']);
   });
 
@@ -81,7 +124,9 @@ describe('Jobs page', () => {
     const f = fetch as ReturnType<typeof vi.fn>;
     f.mockResolvedValueOnce(list([job()]))
       .mockResolvedValueOnce(ok(job({ status: 'cancelled' })))
-      .mockResolvedValueOnce(list([job({ status: 'cancelled', step: 'cancelled', queue_position: null })]));
+      .mockResolvedValueOnce(
+        list([job({ status: 'cancelled', step: 'cancelled', queue_position: null })])
+      );
     render(Jobs, { onopen: () => {} });
     await fireEvent.click(await screen.findByText('Cancel'));
     await waitFor(() => expect(screen.getAllByText('cancelled').length).toBeGreaterThan(0));
@@ -92,22 +137,36 @@ describe('Jobs page', () => {
   it('opens a finished job and shows when it expires', async () => {
     const onopen = vi.fn();
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      list([job({ status: 'completed', step: 'done', progress: 1, queue_position: null, expires_at: '2030-01-08T12:00:00+00:00' })]),
+      list([
+        job({
+          status: 'completed',
+          step: 'done',
+          progress: 1,
+          queue_position: null,
+          expires_at: '2030-01-08T12:00:00+00:00',
+        }),
+      ])
     );
     render(Jobs, { onopen });
     await fireEvent.click(await screen.findByText('Open'));
     expect(onopen).toHaveBeenCalledOnce();
     expect(screen.getByText(/Expires/)).toBeTruthy();
-    expect(screen.getByText('TXT').getAttribute('href')).toContain('/api/jobs/j1/download?format=txt');
+    expect(screen.getByText('TXT').getAttribute('href')).toContain(
+      '/api/jobs/j1/download?format=txt'
+    );
   });
 
   it('changes the retention of a job', async () => {
     const f = fetch as ReturnType<typeof vi.fn>;
     const done = job({ status: 'completed', step: 'done', queue_position: null });
-    f.mockResolvedValueOnce(list([done])).mockResolvedValueOnce(ok(done)).mockResolvedValueOnce(list([done]));
+    f.mockResolvedValueOnce(list([done]))
+      .mockResolvedValueOnce(ok(done))
+      .mockResolvedValueOnce(list([done]));
     render(Jobs, { onopen: () => {} });
     await fireEvent.click(await screen.findByText('Retention'));
-    await fireEvent.change(screen.getByLabelText('Retention policy'), { target: { value: 'keep' } });
+    await fireEvent.change(screen.getByLabelText('Retention policy'), {
+      target: { value: 'keep' },
+    });
     await fireEvent.click(screen.getByText('Save'));
     await waitFor(() => expect(calls()[1][0]).toBe('/api/jobs/j1/retention'));
     expect(JSON.parse(calls()[1][1]?.body as string)).toEqual({ mode: 'keep', days: null });
@@ -115,7 +174,9 @@ describe('Jobs page', () => {
 
   it('opens the job from an email link once it is finished', async () => {
     const onopen = vi.fn();
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(list([job({ status: 'completed', step: 'done', queue_position: null })]));
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      list([job({ status: 'completed', step: 'done', queue_position: null })])
+    );
     render(Jobs, { onopen, focusJobId: 'j1' });
     await waitFor(() => expect(onopen).toHaveBeenCalledOnce());
   });
@@ -150,13 +211,23 @@ describe('Profile page: translation language', () => {
   it('is a dropdown that keeps an earlier free-text choice', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       ok({
-        username: 'u', email: 'u@example.com', retention_mode: 'default', retention_days: null, notify_job_ready: true,
-        default_options: { translate_to: 'Esperanto' }, platform_retention: { mode: 'hold', days: 7 },
-        has_openai_key: false, openai_key_hint: null, email_enabled: false, oauth_provider: null,
-      }),
+        username: 'u',
+        email: 'u@example.com',
+        retention_mode: 'default',
+        retention_days: null,
+        notify_job_ready: true,
+        default_options: { translate_to: 'Esperanto' },
+        platform_retention: { mode: 'hold', days: 7 },
+        has_openai_key: false,
+        openai_key_hint: null,
+        email_enabled: false,
+        oauth_provider: null,
+      })
     );
     render(Profile, { token: 't' });
-    const select = (await screen.findByLabelText('Default translation language')) as HTMLSelectElement;
+    const select = (await screen.findByLabelText(
+      'Default translation language'
+    )) as HTMLSelectElement;
     expect(select.tagName).toBe('SELECT');
     expect(select.value).toBe('Esperanto');
     expect([...select.options].map((o) => o.value)).toContain('Spanish');
@@ -169,13 +240,20 @@ describe('Profile page', () => {
 
   it('saves a retention default', async () => {
     const f = fetch as ReturnType<typeof vi.fn>;
-    f.mockResolvedValueOnce(ok(profile())).mockResolvedValueOnce(ok(profile({ retention_mode: 'keep' })));
+    f.mockResolvedValueOnce(ok(profile())).mockResolvedValueOnce(
+      ok(profile({ retention_mode: 'keep' }))
+    );
     render(Profile, { token: 't' });
-    await fireEvent.change(await screen.findByLabelText('Default retention'), { target: { value: 'keep' } });
+    await fireEvent.change(await screen.findByLabelText('Default retention'), {
+      target: { value: 'keep' },
+    });
     await fireEvent.click(screen.getByText('Save retention'));
     await screen.findByText('Retention saved');
     expect(calls()[1][1]?.method).toBe('PATCH');
-    expect(JSON.parse(calls()[1][1]?.body as string)).toEqual({ retention_mode: 'keep', retention_days: null });
+    expect(JSON.parse(calls()[1][1]?.body as string)).toEqual({
+      retention_mode: 'keep',
+      retention_days: null,
+    });
   });
 
   it('shows only the masked tail of a stored key and never the key', async () => {
@@ -189,7 +267,9 @@ describe('Profile page', () => {
 
   it('stores a new key, then clears the field', async () => {
     const f = fetch as ReturnType<typeof vi.fn>;
-    f.mockResolvedValueOnce(ok(profile())).mockResolvedValueOnce(ok(profile({ has_openai_key: true, openai_key_hint: '****9999' })));
+    f.mockResolvedValueOnce(ok(profile())).mockResolvedValueOnce(
+      ok(profile({ has_openai_key: true, openai_key_hint: '****9999' }))
+    );
     render(Profile, { token: 't' });
     const input = (await screen.findByLabelText('OpenAI API key')) as HTMLInputElement;
     await fireEvent.input(input, { target: { value: 'sk-secret-key-9999' } });
@@ -201,7 +281,9 @@ describe('Profile page', () => {
 
   it('opts out of the job-ready email', async () => {
     const f = fetch as ReturnType<typeof vi.fn>;
-    f.mockResolvedValueOnce(ok(profile())).mockResolvedValueOnce(ok(profile({ notify_job_ready: false })));
+    f.mockResolvedValueOnce(ok(profile())).mockResolvedValueOnce(
+      ok(profile({ notify_job_ready: false }))
+    );
     render(Profile, { token: 't' });
     await fireEvent.click(await screen.findByLabelText(/Email me when a job finishes/));
     await waitFor(() => expect(calls()[1][1]?.method).toBe('PATCH'));
@@ -210,11 +292,17 @@ describe('Profile page', () => {
 
   it('deletes the account only after confirming with the password', async () => {
     const f = fetch as ReturnType<typeof vi.fn>;
-    f.mockResolvedValueOnce(ok(profile())).mockResolvedValueOnce({ ok: true, status: 204, json: async () => ({}) });
+    f.mockResolvedValueOnce(ok(profile())).mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      json: async () => ({}),
+    });
     const gone = vi.fn();
     render(Profile, { token: 't', onaccountdeleted: gone });
     await fireEvent.click(await screen.findByText('Delete my account…'));
-    await fireEvent.input(screen.getByLabelText('Password to confirm'), { target: { value: 'pw-123456' } });
+    await fireEvent.input(screen.getByLabelText('Password to confirm'), {
+      target: { value: 'pw-123456' },
+    });
     await fireEvent.click(screen.getByText('Permanently delete'));
     await waitFor(() => expect(gone).toHaveBeenCalledOnce());
     expect(calls()[1][1]?.method).toBe('DELETE');

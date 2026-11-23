@@ -48,7 +48,7 @@
           onprogress(progressEvent);
         } else if (message.status === 'completed') {
           statusMessage = 'Transcription complete!';
-          
+
           // Parse the result to extract segments
           const result = message.result || '';
           const segments = parseTranscriptResult(result);
@@ -89,14 +89,18 @@
     };
   }
 
-  function parseTranscriptResult(result: string): Array<{ start: number; end: number; text: string; speaker?: string }> {
+  function parseTranscriptResult(
+    result: string
+  ): Array<{ start: number; end: number; text: string; speaker?: string }> {
     // Parse the transcript result format: "[MM:SS - MM:SS] text" or "[Speaker] [MM:SS - MM:SS] text"
     const segments: Array<{ start: number; end: number; text: string; speaker?: string }> = [];
-    const lines = result.split('\n').filter(line => line.trim());
+    const lines = result.split('\n').filter((line) => line.trim());
 
     for (const line of lines) {
       // Try to match format with speaker: [Speaker] [MM:SS - MM:SS] text
-      const speakerMatch = line.match(/^\[([^\]]+)\]\s*\[(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})\]\s*(.+)$/);
+      const speakerMatch = line.match(
+        /^\[([^\]]+)\]\s*\[(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})\]\s*(.+)$/
+      );
       if (speakerMatch) {
         const [, speaker, startMin, startSec, endMin, endSec, text] = speakerMatch;
         segments.push({
