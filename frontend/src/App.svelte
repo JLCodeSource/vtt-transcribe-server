@@ -171,6 +171,7 @@
   }
 
   async function loginWithPassword(usernameValue: string, passwordValue: string): Promise<string> {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local request body, never read reactively
     const formData = new URLSearchParams();
     formData.append('username', usernameValue);
     formData.append('password', passwordValue);

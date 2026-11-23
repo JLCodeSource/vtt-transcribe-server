@@ -83,7 +83,7 @@
     {#if oauthProviders.length > 0}
       <div class="oauth-section">
         <div class="oauth-buttons">
-          {#each oauthProviders as provider}
+          {#each oauthProviders as provider (provider)}
             <button type="button" onclick={() => handleOAuthLogin(provider)} class="oauth-button">
               <span class="oauth-icon">{getProviderIcon(provider)}</span>
               Continue with {getProviderName(provider)}

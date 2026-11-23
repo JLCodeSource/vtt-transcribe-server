@@ -104,6 +104,7 @@
   let selectedSpeaker = $state('all');
 
   const speakers = $derived.by(() => {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local accumulator inside $derived.by, not state
     const speakerSet = new Set<string>();
     segments.forEach((seg) => {
       if (seg.speaker) {
@@ -277,7 +278,7 @@
     {#if speakers.length > 0}
       <select bind:value={selectedSpeaker} class="speaker-filter">
         <option value="all">All Speakers</option>
-        {#each speakers as speaker}
+        {#each speakers as speaker (speaker)}
           <option value={speaker}>{speaker}</option>
         {/each}
       </select>

@@ -31,7 +31,7 @@
   </div>
 
   <ul class="nav-menu" id="nav-menu">
-    {#each menuItems as item}
+    {#each menuItems as item (item.id)}
       <li>
         <button
           class="nav-item"
