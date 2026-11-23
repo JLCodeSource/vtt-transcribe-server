@@ -266,7 +266,9 @@ def test_sweep_deletes_only_expired_finished_jobs_with_an_injected_clock(
 
 
 @pytest.fixture
-def client(db: async_sessionmaker[AsyncSession], clean_jobs: dict[str, dict[str, Any]], tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+def client(
+    db: async_sessionmaker[AsyncSession], clean_jobs: dict[str, dict[str, Any]], tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
     monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
     monkeypatch.setattr("vtt_server.auth.SECRET_KEY", "test-secret-key-for-jwt-signing-only")  # other tests reload auth
 
@@ -501,23 +503,34 @@ def test_run_diarizer_hands_the_callback_to_the_backend() -> None:
     assert backend.progress_callback is cb
 
 
-def test_oversized_upload_is_refused_while_streaming_and_leaves_nothing_behind(client: TestClient, db: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_oversized_upload_is_refused_while_streaming_and_leaves_nothing_behind(
+    client: TestClient, db: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
     monkeypatch.setattr("vtt_server.routes.transcription.MAX_FILE_SIZE", 1024)
     monkeypatch.setattr("vtt_server.routes.transcription.UPLOAD_CHUNK", 256)
     h = login(client, "alice")
-    refused = client.post("/api/transcribe", headers=h, files={"file": ("big.mp3", b"x" * 5000, "audio/mpeg")}, data={"api_key": "sk-test-key-123"})
+    refused = client.post(
+        "/api/transcribe",
+        headers=h,
+        files={"file": ("big.mp3", b"x" * 5000, "audio/mpeg")},
+        data={"api_key": "sk-test-key-123"},
+    )
     assert refused.status_code == 413
     assert "too large" in refused.json()["detail"].lower()
     assert list(tmp_path.iterdir()) == []  # the partial file and its job folder were removed
 
 
-def test_upload_within_the_limit_is_stored_in_chunks(client: TestClient, db: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_upload_within_the_limit_is_stored_in_chunks(
+    client: TestClient, db: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
     monkeypatch.setattr("vtt_server.routes.transcription.UPLOAD_CHUNK", 100)
     h = login(client, "alice")
     payload = bytes(range(256)) * 10
-    queued = client.post("/api/transcribe", headers=h, files={"file": ("a.mp3", payload, "audio/mpeg")}, data={"api_key": "sk-test-key-123"})
+    queued = client.post(
+        "/api/transcribe", headers=h, files={"file": ("a.mp3", payload, "audio/mpeg")}, data={"api_key": "sk-test-key-123"}
+    )
     assert queued.status_code == 200
     stored = next(tmp_path.glob("*/input.mp3"))
     assert stored.read_bytes() == payload

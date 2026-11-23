@@ -1,8 +1,8 @@
 """Command-line admin helpers.
 
-    python -m vtt_server.manage promote USERNAME     # grant administrator rights
-    python -m vtt_server.manage demote USERNAME
-    python -m vtt_server.manage list
+python -m vtt_server.manage promote USERNAME     # grant administrator rights
+python -m vtt_server.manage demote USERNAME
+python -m vtt_server.manage list
 """
 
 import argparse
