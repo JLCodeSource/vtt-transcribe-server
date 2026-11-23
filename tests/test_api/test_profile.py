@@ -81,11 +81,16 @@ def test_defaults(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_retention_default_and_email_opt_out(client: TestClient) -> None:
     h = login(client)
-    r = client.patch("/api/profile", headers=h, json={"retention_mode": "hold", "retention_days": 14, "notify_job_ready": False})
+    r = client.patch(
+        "/api/profile", headers=h, json={"retention_mode": "hold", "retention_days": 14, "notify_job_ready": False}
+    )
     assert r.status_code == 200
     assert r.json()["effective_retention"] == {"mode": "hold", "days": 14}
     assert r.json()["notify_job_ready"] is False
-    assert client.patch("/api/profile", headers=h, json={"retention_mode": "keep"}).json()["effective_retention"]["mode"] == "keep"
+    assert (
+        client.patch("/api/profile", headers=h, json={"retention_mode": "keep"}).json()["effective_retention"]["mode"]
+        == "keep"
+    )
     assert client.patch("/api/profile", headers=h, json={"retention_mode": "hold", "retention_days": 0}).status_code == 422
     assert client.patch("/api/profile", headers=h, json={"retention_mode": "nope"}).status_code == 422
     back = client.patch("/api/profile", headers=h, json={"retention_mode": "default"}).json()
@@ -146,7 +151,9 @@ def test_the_stored_key_is_used_when_a_request_carries_none(client: TestClient, 
     store.enabled, store.session_factory = True, db
     try:
         with patch("vtt_server.jobqueue.JobQueue.ensure_running"):
-            r = client.post("/api/transcribe", headers=h, files={"file": ("a.mp3", b"x", "audio/mpeg")}, data={"engine": "openai"})
+            r = client.post(
+                "/api/transcribe", headers=h, files={"file": ("a.mp3", b"x", "audio/mpeg")}, data={"engine": "openai"}
+            )
         assert r.status_code == 200  # no api_key in the request, yet accepted
         assert "secret" not in tx.jobs[r.json()["job_id"]]  # resolved at run time, nothing stored per job
         assert asyncio.run(tx.resolve_openai_key(2, None)) == SECRET
@@ -160,7 +167,9 @@ def test_the_stored_key_is_used_when_a_request_carries_none(client: TestClient, 
 
 def test_change_password(client: TestClient) -> None:
     h = login(client)
-    r = client.post("/auth/change-password", headers=h, json={"current_password": PASSWORD, "new_password": "a-brand-new-pass"})
+    r = client.post(
+        "/auth/change-password", headers=h, json={"current_password": PASSWORD, "new_password": "a-brand-new-pass"}
+    )
     assert r.status_code == 204
     assert client.post("/auth/token", data={"username": "alice", "password": PASSWORD}).status_code == 401
     assert client.post("/auth/token", data={"username": "alice", "password": "a-brand-new-pass"}).status_code == 200
@@ -196,7 +205,9 @@ def test_last_administrator_cannot_delete_themselves(client: TestClient) -> None
     assert r.status_code == 400
 
 
-def test_registration_sends_a_welcome_email_when_smtp_is_configured(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_registration_sends_a_welcome_email_when_smtp_is_configured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     sent: list[Any] = []
 
     class Fake:

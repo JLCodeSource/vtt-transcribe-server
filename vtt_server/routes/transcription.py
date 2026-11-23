@@ -114,6 +114,7 @@ def _too_large(size_so_far: int) -> HTTPException:
         detail=f"File too large (over {size_so_far} bytes). Maximum size: {limit} bytes ({shown})",
     )
 
+
 # Maximum progress queue size (to prevent unbounded memory growth)
 # A typical transcription job emits ~10-20 progress events, so 100 is generous
 MAX_PROGRESS_QUEUE_SIZE = 100
