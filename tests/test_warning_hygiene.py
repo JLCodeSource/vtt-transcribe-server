@@ -23,6 +23,9 @@ def test_signing_a_token_emits_no_warnings() -> None:
 
 
 def test_only_the_named_third_party_warning_is_filtered() -> None:
+    """pytest -W error on the command line overrides an ini 'ignore', so the one filter lives in conftest and ini stays strict."""
     config = tomllib.loads(PYPROJECT.read_text())["tool"]["pytest"]["ini_options"]
-    filters = config["filterwarnings"]
-    assert filters == ["error", "ignore:'crypt' is deprecated:DeprecationWarning:passlib.*"]
+    assert config["filterwarnings"] == ["error"]
+    conftest = (Path(__file__).parent / "conftest.py").read_text()
+    assert conftest.count("simplefilter(") + conftest.count("filterwarnings(") == 1
+    assert "'crypt' is deprecated" in conftest
