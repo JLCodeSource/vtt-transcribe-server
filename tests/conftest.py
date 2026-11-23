@@ -1,6 +1,7 @@
 """Pytest configuration for loading environment variables."""
 
 import os
+import warnings
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 pytest_plugins = ("pytest_asyncio",)
 
 # Set required environment variables for API tests BEFORE any imports
-os.environ.setdefault("SECRET_KEY", "test-secret-key-for-jwt-signing-only")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512")
 # Rate limiting is covered by its own tests; keep it out of the way of tests that sign in repeatedly
 os.environ.setdefault("VTT_LOGIN_RATE_LIMIT", "0")
 os.environ.setdefault("VTT_REGISTER_RATE_LIMIT", "0")
@@ -18,6 +19,12 @@ os.environ.setdefault("VTT_MAX_ACTIVE_JOBS_PER_USER", "0")  # job capacity has i
 os.environ.setdefault("VTT_MAX_ACTIVE_JOBS", "0")
 os.environ.setdefault("VTT_STATIC_DIR", "")  # a locally built UI in vtt_server/static must not change the API tests
 os.environ.setdefault("ENCRYPTION_KEY", "eZG7WcaEfouAvUvzsF8dpS1Arw-lfhjCs5LU4gzuXVE=")
+
+# passlib (unmaintained) imports the stdlib 'crypt' module, deprecated in Python 3.12 and not ours to change.
+# Import it once here under a narrow filter so the suite can run with -W error; this is the only warning filtered.
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message="'crypt' is deprecated", category=DeprecationWarning)
+    import passlib.context  # noqa: F401
 
 # Load .env file at module import time (before pytest collection)
 env_path = Path(__file__).parent.parent / ".env"

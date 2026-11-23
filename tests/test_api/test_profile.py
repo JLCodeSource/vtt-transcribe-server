@@ -44,7 +44,9 @@ def db() -> Iterator[async_sessionmaker[AsyncSession]]:
 
 @pytest.fixture
 def client(db: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> Iterator[TestClient]:
-    monkeypatch.setattr("vtt_server.auth.SECRET_KEY", "test-secret-key-for-jwt-signing-only")  # other tests reload auth
+    monkeypatch.setattr(
+        "vtt_server.auth.SECRET_KEY", "test-secret-key-for-jwt-signing-only-padded-to-at-least-sixty-four-bytes-for-hs512"
+    )  # other tests reload auth
     monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
 
     async def override() -> AsyncGenerator[AsyncSession, None]:

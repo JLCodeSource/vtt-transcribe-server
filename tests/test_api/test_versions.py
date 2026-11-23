@@ -49,6 +49,7 @@ def db() -> Iterator[Any]:
     yield maker
     store.enabled = False
     store.session_factory = None
+    asyncio.run(engine.dispose())
 
 
 @pytest.fixture

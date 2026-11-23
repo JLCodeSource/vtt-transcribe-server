@@ -1,9 +1,11 @@
-"""The suite runs with ``-W error``: our own code and tests must not emit warnings, and only named third-party ones are filtered."""
+"""The suite runs with ``-W error``: our code and tests emit no warnings; only one named third-party one is filtered."""
 
 import os
 import tomllib
 import warnings
 from pathlib import Path
+
+import pytest
 
 from vtt_server.auth import ALGORITHM, create_access_token
 
@@ -16,14 +18,15 @@ def test_suite_secret_key_is_long_enough_for_hs512() -> None:
     assert len(os.environ["SECRET_KEY"].encode()) >= HS512_MIN_KEY_BYTES
 
 
-def test_signing_a_token_emits_no_warnings() -> None:
+def test_signing_a_token_emits_no_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("vtt_server.auth.SECRET_KEY", os.environ["SECRET_KEY"])  # other tests reload auth with their own env
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         create_access_token({"sub": "someone"})
 
 
 def test_only_the_named_third_party_warning_is_filtered() -> None:
-    """pytest -W error on the command line overrides an ini 'ignore', so the one filter lives in conftest and ini stays strict."""
+    """A command-line -W error overrides an ini 'ignore', so the one filter lives in conftest and the ini stays strict."""
     config = tomllib.loads(PYPROJECT.read_text())["tool"]["pytest"]["ini_options"]
     assert config["filterwarnings"] == ["error"]
     conftest = (Path(__file__).parent / "conftest.py").read_text()

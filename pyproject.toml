@@ -73,6 +73,7 @@ override-dependencies = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+filterwarnings = ["error"]  # the one third-party exemption (passlib/crypt) is in tests/conftest.py: a CLI -W error would override it here
 
 [build-system]
 requires = ["hatchling"]
