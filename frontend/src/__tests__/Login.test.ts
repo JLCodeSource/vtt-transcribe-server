@@ -2,14 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import Login from '../components/Login.svelte';
 
+import { installFetchMock } from './helpers/fetchMock';
+
 // Mock fetch globally
-globalThis.fetch = vi.fn();
+const fetchMock = installFetchMock();
 
 describe('Login', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Mock OAuth providers fetch that happens on mount
-    (globalThis.fetch as any).mockResolvedValue({
+    fetchMock.mockResolvedValue({
       ok: false,
       json: async () => ({ providers: [] }),
     });
