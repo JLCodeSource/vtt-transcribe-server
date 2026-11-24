@@ -155,6 +155,14 @@ docker run --rm -v "$PWD":/w -w /w node:22-slim sh scripts/build_ui.sh      # we
 docker run --rm -v "$PWD":/w -w /w python:3.12-slim bash -c 'pip install -q uv && uv build'   # dist/*.whl and *.tar.gz
 ```
 
+### Edge builds
+
+Every push to `main` also publishes `ghcr.io/jlcodesource/vtt-transcribe-server:edge` (lean) and `:edge-local` (`--extra local`) via
+`edge.yml`, with the core (`vtt-transcribe`) built from its `main` branch instead of PyPI (Docker build arg `CORE_REF`; empty, the
+default, keeps the locked PyPI core). `GET /health` reports `build.server_sha` and `build.core_sha` (from the `BUILD_SHA` and
+`CORE_SHA` build args, `unknown` otherwise) so you can see exactly what runs. These are moving, untested-by-release snapshots for
+the test environment: **not for production**; use the versioned tags. Edge never publishes to PyPI or creates tags or releases.
+
 ## Versions: nothing is thrown away
 
 The original-language text of every job is stored and always exportable, whether or not it is translated. On top of it the
