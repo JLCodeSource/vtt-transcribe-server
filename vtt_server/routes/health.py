@@ -1,5 +1,6 @@
 """Health check endpoints."""
 
+import os
 from typing import Any
 
 from fastapi import APIRouter
@@ -16,4 +17,12 @@ logger = get_logger(__name__)
 async def health_check() -> dict[str, Any]:
     """Health check endpoint."""
     logger.debug("Health check request received")
-    return {"status": "healthy", "version": __version__, "core_version": core_version}
+    return {
+        "status": "healthy",
+        "version": __version__,
+        "core_version": core_version,
+        "build": {
+            "server_sha": os.environ.get("BUILD_SHA") or "unknown",
+            "core_sha": os.environ.get("CORE_SHA") or "unknown",
+        },
+    }
