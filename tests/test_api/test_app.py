@@ -459,3 +459,25 @@ class TestDatabaseFunctions:
 
                 # Rollback should be called
                 assert mock_session.rollback.called
+
+
+class TestHealthBuildInfo:
+    """GET /health reports which server and core builds are running (edge environment)."""
+
+    def test_build_defaults_to_unknown(self, client, monkeypatch):
+        monkeypatch.delenv("BUILD_SHA", raising=False)
+        monkeypatch.delenv("CORE_SHA", raising=False)
+        build = client.get("/health").json()["build"]
+        assert build == {"server_sha": "unknown", "core_sha": "unknown"}
+
+    def test_build_reads_shas_from_env(self, client, monkeypatch):
+        monkeypatch.setenv("BUILD_SHA", "abc1234")
+        monkeypatch.setenv("CORE_SHA", "def5678")
+        build = client.get("/health").json()["build"]
+        assert build == {"server_sha": "abc1234", "core_sha": "def5678"}
+
+    def test_empty_env_counts_as_unknown(self, client, monkeypatch):
+        monkeypatch.setenv("BUILD_SHA", "")
+        monkeypatch.setenv("CORE_SHA", "")
+        build = client.get("/health").json()["build"]
+        assert build == {"server_sha": "unknown", "core_sha": "unknown"}
