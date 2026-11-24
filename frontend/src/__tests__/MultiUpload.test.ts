@@ -1,22 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import FileUpload from '../components/FileUpload.svelte';
+import { ok, makeProfile } from './helpers/fetchMock';
 
-const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
-const profile = {
-  username: 'alice',
-  email: 'a@example.com',
-  oauth_provider: null,
-  retention_mode: 'default',
-  retention_days: null,
-  effective_retention: { mode: 'hold', days: 7 },
-  platform_retention: { mode: 'hold', days: 7 },
-  notify_job_ready: true,
-  email_enabled: false,
-  default_options: {},
-  has_openai_key: true,
-  openai_key_hint: '****abcd',
-};
+const profile = makeProfile();
 const audio = (name: string, size = 3) =>
   new File(['x'.repeat(size)], name, { type: 'audio/mpeg', lastModified: 1_000 });
 

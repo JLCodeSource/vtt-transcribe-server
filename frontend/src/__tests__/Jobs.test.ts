@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import Jobs from '../components/Jobs.svelte';
 import Profile from '../components/Profile.svelte';
+import { ok, makeProfile } from './helpers/fetchMock';
 
 const job = (over: Record<string, unknown> = {}) => ({
   job_id: 'j1',
@@ -15,7 +16,6 @@ const job = (over: Record<string, unknown> = {}) => ({
   expires_at: null,
   ...over,
 });
-const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
 const list = (jobs: unknown[]) => ok({ jobs, queue_length: jobs.length, running: null });
 const calls = () =>
   (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, RequestInit?]>;
@@ -188,21 +188,14 @@ describe('Jobs page', () => {
   });
 });
 
-const profile = (over: Record<string, unknown> = {}) => ({
-  username: 'alice',
-  email: 'alice@example.com',
-  oauth_provider: null,
-  retention_mode: 'default',
-  retention_days: null,
-  effective_retention: { mode: 'hold', days: 7 },
-  platform_retention: { mode: 'hold', days: 7 },
-  notify_job_ready: true,
-  email_enabled: true,
-  default_options: {},
-  has_openai_key: false,
-  openai_key_hint: null,
-  ...over,
-});
+const profile = (over: Record<string, unknown> = {}) =>
+  makeProfile({
+    email: 'alice@example.com',
+    email_enabled: true,
+    has_openai_key: false,
+    openai_key_hint: null,
+    ...over,
+  });
 
 describe('Profile page: translation language', () => {
   beforeEach(() => vi.stubGlobal('fetch', vi.fn()));

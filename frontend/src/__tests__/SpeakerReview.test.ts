@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import SpeakerReview from '../components/SpeakerReview.svelte';
 import type { SegmentsResponse } from '../types';
+import { ok } from './helpers/fetchMock';
 
 const data = (over: Partial<SegmentsResponse> = {}): SegmentsResponse => ({
   job_id: 'j1',
@@ -57,8 +58,6 @@ const data = (over: Partial<SegmentsResponse> = {}): SegmentsResponse => ({
   ],
   ...over,
 });
-
-const ok = (body: unknown) => ({ ok: true, json: async () => body }) as Response;
 
 describe('SpeakerReview', () => {
   let fetchMock: ReturnType<typeof vi.fn>;

@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import Admin from '../components/Admin.svelte';
 import ChangePassword from '../components/ChangePassword.svelte';
 import Navigation from '../components/Navigation.svelte';
+import { ok } from './helpers/fetchMock';
 
 const user = (over: Record<string, unknown> = {}) => ({
   id: 2,
@@ -17,7 +18,6 @@ const user = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
 const calls = () =>
   (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, RequestInit?]>;
 
