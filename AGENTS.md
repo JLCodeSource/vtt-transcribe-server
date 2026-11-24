@@ -48,9 +48,11 @@ docker run --rm -v "$PWD/frontend":/w -w /w node:22-slim bash -c \
 
 Browser e2e (`npm run test:e2e`) runs when you touch UI behaviour; it is manual in CI.
 
-These already fail on `main` (found by the audit). They are tracked as beads and fixed first; do not add to them and do not
-"fix" them inside an unrelated task: `ruff format --check` (4 files), `pytest -W error` (third-party `crypt`
-DeprecationWarning breaks collection). The frontend gates (`svelte-check`, ESLint, prettier) are clean and must stay clean.
+Every gate above (ruff, pytest `-W error`, `svelte-check`, ESLint, prettier, Vitest) is clean on `main` and must stay clean.
+Do not add warnings or suppressions; fix the cause instead.
+
+`pytest -W error` is clean: the only filter is passlib's import of the deprecated stdlib `crypt` module, applied once in
+`tests/conftest.py`. Do not add other filters; fix the warning instead (a 64+ byte `TEST_SECRET_KEY`, dispose engines).
 
 ### Landing a branch (how every task ends)
 
@@ -62,6 +64,11 @@ DeprecationWarning breaks collection). The frontend gates (`svelte-check`, ESLin
 4. A worker stops when its PR is merge-ready (all checks green, feedback addressed) and reports; the coordinator reviews
    (section 5) and merges with a regular merge commit, or a worker merges only when told to.
 5. Beads are synced with `bd dolt push` in the beads workspace (section 4). The old `bd sync` into the repository is retired.
+6. **Close the merged branch on the remote.** Whoever merges deletes the branch straight away: `gh pr merge <n> --merge --delete-branch`,
+   or afterwards `git push origin --delete <branch>`, then the local branch and its worktree (`git worktree remove`, `git branch -d`).
+   If other PRs are stacked on it, retarget them to `main` first, because deleting a base branch closes its dependents.
+   Only merged branches are deleted; an unmerged branch is never deleted, and an abandoned one is reported to the coordinator.
+   The coordinator checks that no merged branch is left on the remote (`git branch -r --merged origin/main`).
 
 ## 4. Work items: beads, outside the code repos
 
@@ -88,7 +95,7 @@ DeprecationWarning breaks collection). The frontend gates (`svelte-check`, ESLin
 
 When your work is finished, do all of this, then stop and wait. Do not archive yourself.
 
-1. Close off anything necessary: docs, changelog, stray branches and temp files, bead status accurate.
+1. Close off anything necessary: docs, changelog, stray branches (local and remote: merged ones deleted, section 3) and temp files, bead status accurate.
 2. Raise follow-on beads for improvements to the system or platform and for wider refactorings that would warrant a bigger
    change, each with acceptance criteria and a link to the bead it came from.
 3. `bd dolt push`.

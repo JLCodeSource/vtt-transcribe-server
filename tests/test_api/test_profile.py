@@ -9,13 +9,14 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tests import TEST_SECRET_KEY
+from tests.conftest import OpenDb
 from vtt_server import mailer
 from vtt_server.app import app
 from vtt_server.auth import get_password_hash
-from vtt_server.database import Base, get_db
+from vtt_server.database import get_db
 from vtt_server.models import APIKey, User
 from vtt_server.routes import transcription as tx
 
@@ -24,27 +25,19 @@ SECRET = "sk-test-0123456789abcdef"
 
 
 @pytest.fixture
-def db() -> Iterator[async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+def db(memory_db: OpenDb) -> async_sessionmaker[AsyncSession]:
+    async def seed(session: AsyncSession) -> None:
+        hashed = get_password_hash(PASSWORD)
+        session.add(User(username="admin", email="admin@example.com", hashed_password=hashed, is_superuser=True))
+        session.add(User(username="alice", email="alice@example.com", hashed_password=hashed))
+        await session.commit()
 
-    async def setup() -> None:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        async with maker() as session:
-            hashed = get_password_hash(PASSWORD)
-            session.add(User(username="admin", email="admin@example.com", hashed_password=hashed, is_superuser=True))
-            session.add(User(username="alice", email="alice@example.com", hashed_password=hashed))
-            await session.commit()
-
-    asyncio.run(setup())
-    yield maker
-    asyncio.run(engine.dispose())
+    return memory_db(seed)
 
 
 @pytest.fixture
 def client(db: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> Iterator[TestClient]:
-    monkeypatch.setattr("vtt_server.auth.SECRET_KEY", "test-secret-key-for-jwt-signing-only")  # other tests reload auth
+    monkeypatch.setattr("vtt_server.auth.SECRET_KEY", TEST_SECRET_KEY)  # other tests reload auth
     monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
 
     async def override() -> AsyncGenerator[AsyncSession, None]:
@@ -81,11 +74,16 @@ def test_defaults(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_retention_default_and_email_opt_out(client: TestClient) -> None:
     h = login(client)
-    r = client.patch("/api/profile", headers=h, json={"retention_mode": "hold", "retention_days": 14, "notify_job_ready": False})
+    r = client.patch(
+        "/api/profile", headers=h, json={"retention_mode": "hold", "retention_days": 14, "notify_job_ready": False}
+    )
     assert r.status_code == 200
     assert r.json()["effective_retention"] == {"mode": "hold", "days": 14}
     assert r.json()["notify_job_ready"] is False
-    assert client.patch("/api/profile", headers=h, json={"retention_mode": "keep"}).json()["effective_retention"]["mode"] == "keep"
+    assert (
+        client.patch("/api/profile", headers=h, json={"retention_mode": "keep"}).json()["effective_retention"]["mode"]
+        == "keep"
+    )
     assert client.patch("/api/profile", headers=h, json={"retention_mode": "hold", "retention_days": 0}).status_code == 422
     assert client.patch("/api/profile", headers=h, json={"retention_mode": "nope"}).status_code == 422
     back = client.patch("/api/profile", headers=h, json={"retention_mode": "default"}).json()
@@ -146,7 +144,9 @@ def test_the_stored_key_is_used_when_a_request_carries_none(client: TestClient, 
     store.enabled, store.session_factory = True, db
     try:
         with patch("vtt_server.jobqueue.JobQueue.ensure_running"):
-            r = client.post("/api/transcribe", headers=h, files={"file": ("a.mp3", b"x", "audio/mpeg")}, data={"engine": "openai"})
+            r = client.post(
+                "/api/transcribe", headers=h, files={"file": ("a.mp3", b"x", "audio/mpeg")}, data={"engine": "openai"}
+            )
         assert r.status_code == 200  # no api_key in the request, yet accepted
         assert "secret" not in tx.jobs[r.json()["job_id"]]  # resolved at run time, nothing stored per job
         assert asyncio.run(tx.resolve_openai_key(2, None)) == SECRET
@@ -160,7 +160,9 @@ def test_the_stored_key_is_used_when_a_request_carries_none(client: TestClient, 
 
 def test_change_password(client: TestClient) -> None:
     h = login(client)
-    r = client.post("/auth/change-password", headers=h, json={"current_password": PASSWORD, "new_password": "a-brand-new-pass"})
+    r = client.post(
+        "/auth/change-password", headers=h, json={"current_password": PASSWORD, "new_password": "a-brand-new-pass"}
+    )
     assert r.status_code == 204
     assert client.post("/auth/token", data={"username": "alice", "password": PASSWORD}).status_code == 401
     assert client.post("/auth/token", data={"username": "alice", "password": "a-brand-new-pass"}).status_code == 200
@@ -196,7 +198,9 @@ def test_last_administrator_cannot_delete_themselves(client: TestClient) -> None
     assert r.status_code == 400
 
 
-def test_registration_sends_a_welcome_email_when_smtp_is_configured(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_registration_sends_a_welcome_email_when_smtp_is_configured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     sent: list[Any] = []
 
     class Fake:

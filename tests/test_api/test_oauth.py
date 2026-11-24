@@ -6,6 +6,8 @@ import pytest
 from authlib.integrations.starlette_client import OAuthError
 from fastapi.testclient import TestClient
 
+from tests import TEST_SECRET_KEY
+
 
 @pytest.fixture
 def client():
@@ -203,7 +205,10 @@ class TestOAuthCallback:
         with (
             patch("vtt_server.routes.oauth.oauth") as mock_oauth,
             patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
-            patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
+            patch(
+                "vtt_server.auth.SECRET_KEY",
+                TEST_SECRET_KEY,
+            ),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -250,7 +255,10 @@ class TestOAuthCallback:
         with (
             patch("vtt_server.routes.oauth.oauth") as mock_oauth,
             patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
-            patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
+            patch(
+                "vtt_server.auth.SECRET_KEY",
+                TEST_SECRET_KEY,
+            ),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -284,7 +292,10 @@ class TestOAuthCallback:
         with (
             patch("vtt_server.routes.oauth.oauth") as mock_oauth,
             patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
-            patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
+            patch(
+                "vtt_server.auth.SECRET_KEY",
+                TEST_SECRET_KEY,
+            ),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -330,7 +341,10 @@ class TestOAuthCallback:
         with (
             patch("vtt_server.routes.oauth.oauth") as mock_oauth,
             patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
-            patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
+            patch(
+                "vtt_server.auth.SECRET_KEY",
+                TEST_SECRET_KEY,
+            ),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client
@@ -379,7 +393,10 @@ class TestOAuthCallback:
         with (
             patch("vtt_server.routes.oauth.oauth") as mock_oauth,
             patch("vtt_server.routes.oauth.get_or_create_oauth_user") as mock_get_or_create,
-            patch("vtt_server.auth.SECRET_KEY", "test-secret-key-for-oauth-testing"),
+            patch(
+                "vtt_server.auth.SECRET_KEY",
+                TEST_SECRET_KEY,
+            ),
             patch.dict("os.environ", {"FRONTEND_URL": "http://localhost:3000"}, clear=False),
         ):
             mock_oauth.create_client.return_value = mock_oauth_client

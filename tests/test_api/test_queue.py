@@ -9,13 +9,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tests import TEST_SECRET_KEY
+from tests.conftest import OpenDb
 from vtt_server import jobqueue, mailer, retention, versions
 from vtt_server.app import app
 from vtt_server.auth import get_password_hash
-from vtt_server.database import Base, get_db
+from vtt_server.database import get_db
 from vtt_server.jobstore import store
 from vtt_server.models import User
 from vtt_server.routes import transcription as tx
@@ -41,25 +42,18 @@ def clean_jobs() -> Iterator[dict[str, dict[str, Any]]]:
 
 
 @pytest.fixture
-def db() -> Iterator[async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+def db(memory_db: OpenDb) -> Iterator[async_sessionmaker[AsyncSession]]:
+    async def seed(session: AsyncSession) -> None:
+        hashed = get_password_hash(PASSWORD)
+        session.add(User(username="alice", email="alice@example.com", hashed_password=hashed))
+        session.add(User(username="bob", email="bob@example.com", hashed_password=hashed))
+        await session.commit()
 
-    async def setup() -> None:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        async with maker() as session:
-            hashed = get_password_hash(PASSWORD)
-            session.add(User(username="alice", email="alice@example.com", hashed_password=hashed))
-            session.add(User(username="bob", email="bob@example.com", hashed_password=hashed))
-            await session.commit()
-
-    asyncio.run(setup())
+    maker = memory_db(seed)
     store.enabled = True
     store.session_factory = maker
     yield maker
     store.enabled = False
-    asyncio.run(engine.dispose())
 
 
 # ---- worker ----
@@ -266,9 +260,11 @@ def test_sweep_deletes_only_expired_finished_jobs_with_an_injected_clock(
 
 
 @pytest.fixture
-def client(db: async_sessionmaker[AsyncSession], clean_jobs: dict[str, dict[str, Any]], tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+def client(
+    db: async_sessionmaker[AsyncSession], clean_jobs: dict[str, dict[str, Any]], tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
     monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
-    monkeypatch.setattr("vtt_server.auth.SECRET_KEY", "test-secret-key-for-jwt-signing-only")  # other tests reload auth
+    monkeypatch.setattr("vtt_server.auth.SECRET_KEY", TEST_SECRET_KEY)  # other tests reload auth
 
     async def override() -> AsyncGenerator[AsyncSession, None]:
         async with db() as session:
@@ -501,23 +497,34 @@ def test_run_diarizer_hands_the_callback_to_the_backend() -> None:
     assert backend.progress_callback is cb
 
 
-def test_oversized_upload_is_refused_while_streaming_and_leaves_nothing_behind(client: TestClient, db: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_oversized_upload_is_refused_while_streaming_and_leaves_nothing_behind(
+    client: TestClient, db: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
     monkeypatch.setattr("vtt_server.routes.transcription.MAX_FILE_SIZE", 1024)
     monkeypatch.setattr("vtt_server.routes.transcription.UPLOAD_CHUNK", 256)
     h = login(client, "alice")
-    refused = client.post("/api/transcribe", headers=h, files={"file": ("big.mp3", b"x" * 5000, "audio/mpeg")}, data={"api_key": "sk-test-key-123"})
+    refused = client.post(
+        "/api/transcribe",
+        headers=h,
+        files={"file": ("big.mp3", b"x" * 5000, "audio/mpeg")},
+        data={"api_key": "sk-test-key-123"},
+    )
     assert refused.status_code == 413
     assert "too large" in refused.json()["detail"].lower()
     assert list(tmp_path.iterdir()) == []  # the partial file and its job folder were removed
 
 
-def test_upload_within_the_limit_is_stored_in_chunks(client: TestClient, db: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_upload_within_the_limit_is_stored_in_chunks(
+    client: TestClient, db: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("VTT_DATA_DIR", str(tmp_path))
     monkeypatch.setattr("vtt_server.routes.transcription.UPLOAD_CHUNK", 100)
     h = login(client, "alice")
     payload = bytes(range(256)) * 10
-    queued = client.post("/api/transcribe", headers=h, files={"file": ("a.mp3", payload, "audio/mpeg")}, data={"api_key": "sk-test-key-123"})
+    queued = client.post(
+        "/api/transcribe", headers=h, files={"file": ("a.mp3", payload, "audio/mpeg")}, data={"api_key": "sk-test-key-123"}
+    )
     assert queued.status_code == 200
     stored = next(tmp_path.glob("*/input.mp3"))
     assert stored.read_bytes() == payload

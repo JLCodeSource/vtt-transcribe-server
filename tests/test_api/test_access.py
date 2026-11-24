@@ -1,17 +1,16 @@
 """Access control with real tokens: login required, job ownership, capacity, rate limits, registration switch."""
 
-import asyncio
 from collections.abc import AsyncGenerator, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.websockets import WebSocketDisconnect
 
+from tests.conftest import OpenDb
 from vtt_server.app import app
 from vtt_server.auth import get_password_hash
-from vtt_server.database import Base, get_db
+from vtt_server.database import get_db
 from vtt_server.models import User
 from vtt_server.routes.transcription import jobs
 
@@ -19,21 +18,15 @@ PASSWORD = "correct-horse-battery"
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient]:
-    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+def client(memory_db: OpenDb) -> Iterator[TestClient]:
+    async def seed(db: AsyncSession) -> None:
+        hashed = get_password_hash(PASSWORD)
+        db.add(User(username="admin", email="admin@example.com", hashed_password=hashed, is_superuser=True))
+        db.add(User(username="alice", email="alice@example.com", hashed_password=hashed))
+        db.add(User(username="bob", email="bob@example.com", hashed_password=hashed))
+        await db.commit()
 
-    async def setup() -> None:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        async with maker() as db:
-            hashed = get_password_hash(PASSWORD)
-            db.add(User(username="admin", email="admin@example.com", hashed_password=hashed, is_superuser=True))
-            db.add(User(username="alice", email="alice@example.com", hashed_password=hashed))
-            db.add(User(username="bob", email="bob@example.com", hashed_password=hashed))
-            await db.commit()
-
-    asyncio.run(setup())
+    maker = memory_db(seed)
 
     async def override() -> AsyncGenerator[AsyncSession, None]:
         async with maker() as db:
@@ -48,7 +41,6 @@ def client() -> Iterator[TestClient]:
         jobs.clear()
         jobs.update(saved)
         app.dependency_overrides.clear()
-        asyncio.run(engine.dispose())
 
 
 def login(client: TestClient, username: str) -> dict[str, str]:

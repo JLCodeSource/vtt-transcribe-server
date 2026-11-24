@@ -1,16 +1,23 @@
 """Pytest configuration for loading environment variables."""
 
+import asyncio
 import os
+import warnings
+from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+
+from tests import TEST_SECRET_KEY
 
 # Configure pytest-asyncio
 pytest_plugins = ("pytest_asyncio",)
 
 # Set required environment variables for API tests BEFORE any imports
-os.environ.setdefault("SECRET_KEY", "test-secret-key-for-jwt-signing-only")
+os.environ.setdefault("SECRET_KEY", TEST_SECRET_KEY)
 # Rate limiting is covered by its own tests; keep it out of the way of tests that sign in repeatedly
 os.environ.setdefault("VTT_LOGIN_RATE_LIMIT", "0")
 os.environ.setdefault("VTT_REGISTER_RATE_LIMIT", "0")
@@ -18,6 +25,12 @@ os.environ.setdefault("VTT_MAX_ACTIVE_JOBS_PER_USER", "0")  # job capacity has i
 os.environ.setdefault("VTT_MAX_ACTIVE_JOBS", "0")
 os.environ.setdefault("VTT_STATIC_DIR", "")  # a locally built UI in vtt_server/static must not change the API tests
 os.environ.setdefault("ENCRYPTION_KEY", "eZG7WcaEfouAvUvzsF8dpS1Arw-lfhjCs5LU4gzuXVE=")
+
+# passlib (unmaintained) imports the stdlib 'crypt' module, deprecated in Python 3.12 and not ours to change.
+# Import it once here under a narrow filter so the suite can run with -W error; this is the only warning filtered.
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message="'crypt' is deprecated", category=DeprecationWarning)
+    import passlib.context  # noqa: F401
 
 # Load .env file at module import time (before pytest collection)
 env_path = Path(__file__).parent.parent / ".env"
@@ -123,3 +136,32 @@ def fake_auth():
     yield user
     for app, call in overridden:
         app.dependency_overrides.pop(call, None)
+
+
+OpenDb = Callable[[Callable[[AsyncSession], Awaitable[None]]], async_sessionmaker[AsyncSession]]
+
+
+@pytest.fixture
+def memory_db() -> Iterator[OpenDb]:
+    """Opens an in-memory database with the schema created and ``seed(session)`` run; every engine is disposed afterwards."""
+    from vtt_server.models import User  # imported late: the environment above must be set first
+
+    engines = []
+
+    def open_db(seed: Callable[[AsyncSession], Awaitable[None]]) -> async_sessionmaker[AsyncSession]:
+        engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+        engines.append(engine)
+        maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+        async def create_and_seed() -> None:
+            async with engine.begin() as conn:
+                await conn.run_sync(User.metadata.create_all)  # the models' own Base: other tests reload vtt_server.database
+            async with maker() as session:
+                await seed(session)
+
+        asyncio.run(create_and_seed())
+        return maker
+
+    yield open_db
+    for engine in engines:
+        asyncio.run(engine.dispose())
