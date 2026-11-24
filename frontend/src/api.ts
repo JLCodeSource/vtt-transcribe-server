@@ -24,17 +24,20 @@ export const withToken = (url: string) =>
     ? `${url}${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(authToken)}`
     : url;
 
+/** Throw an Error carrying the server's `detail` message (or the status) for a response that is not ok. */
+async function throwResponseError(response: Response): Promise<never> {
+  const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
+  throw new Error(
+    typeof body.detail === 'string' ? body.detail : `Request failed: ${response.status}`
+  );
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     headers: { ...authHeaders(), ...((init?.headers as Record<string, string>) ?? {}) },
   });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
-    throw new Error(
-      typeof body.detail === 'string' ? body.detail : `Request failed: ${response.status}`
-    );
-  }
+  if (!response.ok) await throwResponseError(response);
   return (await response.json()) as T;
 }
 
@@ -158,12 +161,7 @@ const authed = (token: string, init: RequestInit = {}): RequestInit => ({
 
 async function requestNoBody(url: string, init: RequestInit): Promise<void> {
   const response = await fetch(url, init);
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
-    throw new Error(
-      typeof body.detail === 'string' ? body.detail : `Request failed: ${response.status}`
-    );
-  }
+  if (!response.ok) await throwResponseError(response);
 }
 
 export const fetchMe = (token: string) => request<Me>('/auth/me', authed(token));
