@@ -180,51 +180,59 @@ class TestEnvExampleFile:
         assert re.search(r"^\w+=", content, re.MULTILINE), "Missing variable assignments"
 
 
+DOCKERFILE = Path(__file__).parent.parent / "Dockerfile"
+
+
+def _dockerfile() -> str:
+    return DOCKERFILE.read_text()
+
+
+def _stage(header: str) -> str:
+    """The text of the Dockerfile stage that starts at ``header`` (e.g. ``FROM base AS api``), up to the next FROM."""
+    match = re.search(rf"{re.escape(header)}.*?(?=FROM|\Z)", _dockerfile(), re.DOTALL)
+    assert match, f"Stage '{header}' not found in Dockerfile"
+    return match.group()
+
+
 class TestDockerfileTargets:
     """Test Dockerfile multi-stage build targets."""
 
     def test_dockerfile_exists(self) -> None:
         """Verify Dockerfile exists."""
-        dockerfile = Path(__file__).parent.parent / "Dockerfile"
-        assert dockerfile.exists(), "Dockerfile not found"
+        assert DOCKERFILE.exists(), "Dockerfile not found"
 
     def test_dockerfile_has_required_targets(self) -> None:
         """Verify Dockerfile has all required build targets."""
-        dockerfile = Path(__file__).parent.parent / "Dockerfile"
-        with open(dockerfile) as f:
-            content = f.read()
-
-        required_targets = ["builder", "base", "api", "api-ui"]
-
-        for target in required_targets:
-            pattern = rf"FROM .+ AS {target}"
-            assert re.search(pattern, content), f"Target '{target}' not found in Dockerfile"
+        for target in ["builder", "base", "api", "api-ui"]:
+            assert re.search(rf"FROM .+ AS {target}", _dockerfile()), f"Target '{target}' not found in Dockerfile"
 
     def test_api_target_exposes_port(self) -> None:
         """Verify API target exposes port 8000."""
-        dockerfile = Path(__file__).parent.parent / "Dockerfile"
-        with open(dockerfile) as f:
-            content = f.read()
-
-        # Find API section
-        api_section = re.search(r"FROM base AS api.*?(?=FROM|\Z)", content, re.DOTALL)
-        assert api_section, "API target not found"
-
-        # Check for EXPOSE command
-        assert "EXPOSE 8000" in api_section.group()
+        assert "EXPOSE 8000" in _stage("FROM base AS api")
 
     def test_worker_target_removed(self) -> None:
         """The worker stage was a placeholder and has been dropped."""
-        content = (Path(__file__).parent.parent / "Dockerfile").read_text()
-        assert "AS worker" not in content
+        assert "AS worker" not in _dockerfile()
 
     def test_api_ui_target_bundles_frontend(self) -> None:
         """api-ui is the optional single-container variant: api + built frontend served via VTT_STATIC_DIR."""
-        content = (Path(__file__).parent.parent / "Dockerfile").read_text()
-        section = re.search(r"FROM api AS api-ui.*?(?=FROM|\Z)", content, re.DOTALL)
-        assert section, "api-ui target not found"
-        assert "VTT_STATIC_DIR" in section.group()
-        assert "web-builder" in section.group()
+        section = _stage("FROM api AS api-ui")
+        assert "VTT_STATIC_DIR" in section
+        assert "web-builder" in section
+
+    def test_core_ref_build_arg_installs_core_from_git_only_when_set(self) -> None:
+        """CORE_REF empty keeps core from PyPI (the lockfile); a value installs core from git at that ref."""
+        content = _dockerfile()
+        assert re.search(r'^ARG CORE_REF=""$', content, re.MULTILINE)
+        assert "git+https://github.com/JLCodeSource/vtt-transcribe@${CORE_REF}" in content
+        assert re.search(r'if \[ -n "\$\{CORE_REF\}" \]', content)
+
+    def test_build_shas_reach_the_runtime_environment(self) -> None:
+        """BUILD_SHA / CORE_SHA are build args exported as env in the api stage, so /health and labels can show them."""
+        section = _stage("FROM base AS api")
+        for name in ("BUILD_SHA", "CORE_SHA"):
+            assert f'ARG {name}="unknown"' in section
+            assert f"{name}=${{{name}}}" in section
 
 
 class TestDatabaseSchema:

@@ -2,12 +2,14 @@
 # The core transcription package (vtt-transcribe) is installed from PyPI as a dependency,
 # resolved in uv.lock. The CLI image lives in the public core repo.
 #
-# Build args:
 # Targets:
 #   api     FastAPI server only (the frontend ships separately as its own nginx image, see frontend/Dockerfile)
 #   api-ui  same server with the built frontend bundled in and served at / (single container)
 # Build arg SYNC_ARGS adds extras to `uv sync`; the default (empty) is the lean OpenAI-only image. For the key-free local
 # engine (faster-whisper + local translation; bigger image):  --build-arg SYNC_ARGS="--extra local"
+# Build arg CORE_REF: empty (default) keeps core from PyPI as locked; a git ref (branch, tag or SHA, e.g. `main`) installs
+# vtt-transcribe from https://github.com/JLCodeSource/vtt-transcribe at that ref instead (edge builds, see edge.yml).
+# Build args BUILD_SHA / CORE_SHA are only reported (GET /health, image env); they default to "unknown".
 # Diarization is sherpa-onnx (CPU, ~46 MB models fetched on first use, no torch, no token).
 
 # Build stage: resolve and install dependencies into /opt/venv
@@ -32,6 +34,16 @@ RUN uv sync --frozen --no-dev --no-install-project ${SYNC_ARGS}
 COPY hatch_build.py ./
 COPY vtt_server ./vtt_server
 RUN uv sync --frozen --no-dev --no-editable ${SYNC_ARGS}
+
+# Optional: replace the locked PyPI core with a git ref (git is installed only for this step)
+ARG CORE_REF=""
+RUN if [ -n "${CORE_REF}" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+        && rm -rf /var/lib/apt/lists/* \
+        && extras=sherpa && case "${SYNC_ARGS}" in *local*) extras=sherpa,local;; esac \
+        && uv pip install --python /opt/venv/bin/python --reinstall-package vtt-transcribe \
+            "vtt-transcribe[${extras}] @ git+https://github.com/JLCodeSource/vtt-transcribe@${CORE_REF}"; \
+    fi
 
 # Runtime stage: minimal image with only runtime dependencies
 FROM python:3.12-slim AS base
@@ -59,6 +71,12 @@ ENV VTT_DATA_DIR=/app/jobs
 # API Target - for FastAPI server
 # ============================================================================
 FROM base AS api
+
+# What is running, shown by GET /health and the edge environment
+ARG BUILD_SHA="unknown"
+ARG CORE_SHA="unknown"
+ENV BUILD_SHA=${BUILD_SHA} \
+    CORE_SHA=${CORE_SHA}
 
 COPY --from=builder /opt/venv /opt/venv
 
