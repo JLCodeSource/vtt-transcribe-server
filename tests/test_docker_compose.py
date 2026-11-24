@@ -226,6 +226,22 @@ class TestDockerfileTargets:
         assert "VTT_STATIC_DIR" in section.group()
         assert "web-builder" in section.group()
 
+    def test_core_ref_build_arg_installs_core_from_git_only_when_set(self) -> None:
+        """CORE_REF empty keeps core from PyPI (the lockfile); a value installs core from git at that ref."""
+        content = (Path(__file__).parent.parent / "Dockerfile").read_text()
+        assert re.search(r'^ARG CORE_REF=""$', content, re.MULTILINE)
+        assert "git+https://github.com/JLCodeSource/vtt-transcribe@${CORE_REF}" in content
+        assert re.search(r'if \[ -n "\$\{CORE_REF\}" \]', content)
+
+    def test_build_shas_reach_the_runtime_environment(self) -> None:
+        """BUILD_SHA / CORE_SHA are build args exported as env in the api stage, so /health and labels can show them."""
+        content = (Path(__file__).parent.parent / "Dockerfile").read_text()
+        section = re.search(r"FROM base AS api.*?(?=FROM|\Z)", content, re.DOTALL)
+        assert section
+        for name in ("BUILD_SHA", "CORE_SHA"):
+            assert f'ARG {name}="unknown"' in section.group()
+            assert f"{name}=${{{name}}}" in section.group()
+
 
 class TestDatabaseSchema:
     """The application owns the schema; a SQL init script with different tables broke sign-up on a fresh Postgres."""
