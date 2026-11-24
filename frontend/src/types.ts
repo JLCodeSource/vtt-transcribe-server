@@ -50,7 +50,12 @@ export interface Profile {
   platform_retention: { mode: RetentionMode; days: number | null };
   notify_job_ready: boolean;
   email_enabled: boolean;
-  default_options: { engine?: 'openai' | 'local'; diarize?: boolean; num_speakers?: number; translate_to?: string };
+  default_options: {
+    engine?: 'openai' | 'local';
+    diarize?: boolean;
+    num_speakers?: number;
+    translate_to?: string;
+  };
   has_openai_key: boolean;
   /** ****abcd; the key itself is never returned */
   openai_key_hint: string | null;

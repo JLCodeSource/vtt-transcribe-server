@@ -2,23 +2,62 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import SpeakerReview from '../components/SpeakerReview.svelte';
 import type { SegmentsResponse } from '../types';
+import { ok } from './helpers/fetchMock';
 
 const data = (over: Partial<SegmentsResponse> = {}): SegmentsResponse => ({
   job_id: 'j1',
   translated_to: null,
   speakers: [
-    { id: 'SPEAKER_00', name: null, display_name: 'Speaker 1', seconds: 12, segment_count: 2, sample_text: 'Hello there', samples: [{ start: 0, end: 5 }] },
-    { id: 'SPEAKER_01', name: null, display_name: 'Speaker 2', seconds: 7, segment_count: 1, sample_text: 'Hi', samples: [{ start: 5, end: 12 }] },
+    {
+      id: 'SPEAKER_00',
+      name: null,
+      display_name: 'Speaker 1',
+      seconds: 12,
+      segment_count: 2,
+      sample_text: 'Hello there',
+      samples: [{ start: 0, end: 5 }],
+    },
+    {
+      id: 'SPEAKER_01',
+      name: null,
+      display_name: 'Speaker 2',
+      seconds: 7,
+      segment_count: 1,
+      sample_text: 'Hi',
+      samples: [{ start: 5, end: 12 }],
+    },
   ],
   segments: [
-    { index: 0, start: 0, end: 5, text: 'Hello there', translation: null, speaker_id: 'SPEAKER_00', speaker: 'Speaker 1' },
-    { index: 1, start: 5, end: 12, text: 'Hi', translation: null, speaker_id: 'SPEAKER_01', speaker: 'Speaker 2' },
-    { index: 2, start: 12, end: 14, text: 'Fine', translation: null, speaker_id: 'SPEAKER_00', speaker: 'Speaker 1' },
+    {
+      index: 0,
+      start: 0,
+      end: 5,
+      text: 'Hello there',
+      translation: null,
+      speaker_id: 'SPEAKER_00',
+      speaker: 'Speaker 1',
+    },
+    {
+      index: 1,
+      start: 5,
+      end: 12,
+      text: 'Hi',
+      translation: null,
+      speaker_id: 'SPEAKER_01',
+      speaker: 'Speaker 2',
+    },
+    {
+      index: 2,
+      start: 12,
+      end: 14,
+      text: 'Fine',
+      translation: null,
+      speaker_id: 'SPEAKER_00',
+      speaker: 'Speaker 1',
+    },
   ],
   ...over,
 });
-
-const ok = (body: unknown) => ({ ok: true, json: async () => body }) as Response;
 
 describe('SpeakerReview', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -29,7 +68,9 @@ describe('SpeakerReview', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('lists every speaker with a quote and sample button', () => {
-    render(SpeakerReview, { props: { jobId: 'j1', data: data(), onupdate: () => {}, onclose: () => {} } });
+    render(SpeakerReview, {
+      props: { jobId: 'j1', data: data(), onupdate: () => {}, onclose: () => {} },
+    });
     expect(screen.getByText('“Hello there”')).toBeTruthy();
     expect(screen.getByLabelText('Play sample 1 of Speaker 2')).toBeTruthy();
     expect(screen.getByText(/Found 2 speakers/)).toBeTruthy();
@@ -41,7 +82,9 @@ describe('SpeakerReview', () => {
     fetchMock.mockResolvedValue(ok(next));
     const onupdate = vi.fn();
     render(SpeakerReview, { props: { jobId: 'j1', data: data(), onupdate, onclose: () => {} } });
-    await fireEvent.input(screen.getByLabelText('Name for Speaker 1'), { target: { value: 'Alice' } });
+    await fireEvent.input(screen.getByLabelText('Name for Speaker 1'), {
+      target: { value: 'Alice' },
+    });
     await fireEvent.click(screen.getByText('Save names'));
     await waitFor(() => expect(onupdate).toHaveBeenCalledWith(next));
     const [url, init] = fetchMock.mock.calls[0];
@@ -52,9 +95,15 @@ describe('SpeakerReview', () => {
 
   it('merges one speaker into another', async () => {
     fetchMock.mockResolvedValue(ok(data()));
-    render(SpeakerReview, { props: { jobId: 'j1', data: data(), onupdate: () => {}, onclose: () => {} } });
-    await fireEvent.change(screen.getByLabelText('Merge Speaker 2 into'), { target: { value: 'SPEAKER_00' } });
-    await fireEvent.click(screen.getAllByText('Merge').find((b) => !(b as HTMLButtonElement).disabled)!);
+    render(SpeakerReview, {
+      props: { jobId: 'j1', data: data(), onupdate: () => {}, onclose: () => {} },
+    });
+    await fireEvent.change(screen.getByLabelText('Merge Speaker 2 into'), {
+      target: { value: 'SPEAKER_00' },
+    });
+    await fireEvent.click(
+      screen.getAllByText('Merge').find((b) => !(b as HTMLButtonElement).disabled)!
+    );
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('/api/jobs/j1/speakers/merge');
@@ -63,7 +112,9 @@ describe('SpeakerReview', () => {
 
   it('splits the ticked lines off a speaker', async () => {
     fetchMock.mockResolvedValue(ok(data()));
-    render(SpeakerReview, { props: { jobId: 'j1', data: data(), onupdate: () => {}, onclose: () => {} } });
+    render(SpeakerReview, {
+      props: { jobId: 'j1', data: data(), onupdate: () => {}, onclose: () => {} },
+    });
     await fireEvent.click(screen.getAllByText('Split…')[0]);
     await fireEvent.click(screen.getByLabelText(/Fine/));
     await fireEvent.click(screen.getByText('Split off 1 line'));
@@ -74,8 +125,14 @@ describe('SpeakerReview', () => {
   });
 
   it('shows the server error instead of failing silently', async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 400, json: async () => ({ detail: 'Unknown speaker: X' }) } as Response);
-    render(SpeakerReview, { props: { jobId: 'j1', data: data(), onupdate: () => {}, onclose: () => {} } });
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ detail: 'Unknown speaker: X' }),
+    } as Response);
+    render(SpeakerReview, {
+      props: { jobId: 'j1', data: data(), onupdate: () => {}, onclose: () => {} },
+    });
     await fireEvent.click(screen.getByText('Save names'));
     expect(await screen.findByText('Unknown speaker: X')).toBeTruthy();
   });

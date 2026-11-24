@@ -1,6 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { changePassword, deleteAccount, fetchProfile, removeOpenAIKey, setOpenAIKey, updateProfile } from '../api';
+  import {
+    changePassword,
+    deleteAccount,
+    fetchProfile,
+    removeOpenAIKey,
+    setOpenAIKey,
+    updateProfile,
+  } from '../api';
   import { languageChoices, loadLanguages, TRANSLATION_LANGUAGES } from '../languages';
   import type { Profile } from '../types';
 
@@ -50,7 +57,11 @@
       await fn();
       if (done) status = { section, kind: 'success', text: done };
     } catch (e: unknown) {
-      status = { section, kind: 'error', text: e instanceof Error ? e.message : 'Something went wrong' };
+      status = {
+        section,
+        kind: 'error',
+        text: e instanceof Error ? e.message : 'Something went wrong',
+      };
     }
   }
 
@@ -59,10 +70,21 @@
   const saveRetention = () =>
     run(
       'retention',
-      async () => load(await updateProfile({ retention_mode: mode, retention_days: mode === 'hold' ? Number(days) : null })),
-      'Retention saved',
+      async () =>
+        load(
+          await updateProfile({
+            retention_mode: mode,
+            retention_days: mode === 'hold' ? Number(days) : null,
+          })
+        ),
+      'Retention saved'
     );
-  const saveNotify = () => run('email', async () => load(await updateProfile({ notify_job_ready: notify })), 'Email preference saved');
+  const saveNotify = () =>
+    run(
+      'email',
+      async () => load(await updateProfile({ notify_job_ready: notify })),
+      'Email preference saved'
+    );
   const saveOptions = () =>
     run(
       'defaults',
@@ -75,9 +97,9 @@
               ...(diarize && speakers !== 'auto' ? { num_speakers: Number(speakers) } : {}),
               ...(translateTo.trim() ? { translate_to: translateTo.trim() } : {}),
             },
-          }),
+          })
         ),
-      'Defaults saved',
+      'Defaults saved'
     );
   const saveKey = () =>
     run(
@@ -86,7 +108,7 @@
         load(await setOpenAIKey(keyInput));
         keyInput = '';
       },
-      'API key saved',
+      'API key saved'
     );
   const removeKey = () => run('key', async () => load(await removeOpenAIKey()), 'API key removed');
   const savePassword = () =>
@@ -96,7 +118,7 @@
         await changePassword(token, currentPassword, newPassword);
         currentPassword = newPassword = '';
       },
-      'Password changed',
+      'Password changed'
     );
   const removeAccount = () =>
     run(
@@ -105,13 +127,15 @@
         await deleteAccount(deletePassword || null);
         onaccountdeleted?.();
       },
-      '',
+      ''
     );
 </script>
 
 {#snippet feedback(section: Section)}
   {#if status && status.section === section}
-    <p class="notice {status.kind}" role={status.kind === 'error' ? 'alert' : 'status'}>{status.text}</p>
+    <p class="notice {status.kind}" role={status.kind === 'error' ? 'alert' : 'status'}>
+      {status.text}
+    </p>
   {/if}
 {/snippet}
 
@@ -123,7 +147,10 @@
 
     <section class="section">
       <h3>Defaults for new jobs</h3>
-      <p class="help">These fill in the upload form; each one can still be changed for an individual file when you add it.</p>
+      <p class="help">
+        These fill in the upload form; each one can still be changed for an individual file when you
+        add it.
+      </p>
       <div class="form-grid">
         <label class="field">
           <span>Engine</span>
@@ -137,11 +164,15 @@
           <span>Translate to</span>
           <select bind:value={translateTo} aria-label="Default translation language">
             <option value="">No translation</option>
-            {#each languageChoices(languages, translateTo) as l (l)}<option value={l}>{l}</option>{/each}
+            {#each languageChoices(languages, translateTo) as l (l)}<option value={l}>
+                {l}
+              </option>{/each}
           </select>
         </label>
       </div>
-      <label class="check"><input type="checkbox" bind:checked={diarize} /> <span>Identify speakers</span></label>
+      <label class="check">
+        <input type="checkbox" bind:checked={diarize} /> <span>Identify speakers</span>
+      </label>
       {#if diarize}
         <label class="field narrow">
           <span>Number of speakers</span>
@@ -160,8 +191,11 @@
     <section class="section">
       <h3>Keep my results</h3>
       <p class="help">
-        Default for new jobs; you can change it for each file when you add it, and later on the job. Platform default:
-        {profile.platform_retention.mode === 'hold' ? `${profile.platform_retention.days} days` : profile.platform_retention.mode}.
+        Default for new jobs; you can change it for each file when you add it, and later on the job.
+        Platform default:
+        {profile.platform_retention.mode === 'hold'
+          ? `${profile.platform_retention.days} days`
+          : profile.platform_retention.mode}.
       </p>
       <div class="form-grid">
         <label class="field">
@@ -195,12 +229,30 @@
       {/if}
       <label class="field">
         <span>{profile.has_openai_key ? 'Replace key' : 'Key'}</span>
-        <input type="password" autocomplete="off" placeholder="sk-..." bind:value={keyInput} aria-label="OpenAI API key" />
+        <input
+          type="password"
+          autocomplete="off"
+          placeholder="sk-..."
+          bind:value={keyInput}
+          aria-label="OpenAI API key"
+        />
       </label>
-      <p class="help">Stored encrypted on the server and used only when a job or translation has no key of its own.</p>
+      <p class="help">
+        Stored encrypted on the server and used only when a job or translation has no key of its
+        own.
+      </p>
       <div class="section-actions">
-        <button type="button" class="primary" disabled={keyInput.trim().length < 8} onclick={saveKey}>Save key</button>
-        {#if profile.has_openai_key}<button type="button" class="danger" onclick={removeKey}>Remove key</button>{/if}
+        <button
+          type="button"
+          class="primary"
+          disabled={keyInput.trim().length < 8}
+          onclick={saveKey}
+        >
+          Save key
+        </button>
+        {#if profile.has_openai_key}<button type="button" class="danger" onclick={removeKey}>
+            Remove key
+          </button>{/if}
       </div>
       {@render feedback('key')}
     </section>
@@ -211,7 +263,9 @@
         <input type="checkbox" bind:checked={notify} onchange={saveNotify} />
         <span>Email me when a job finishes or fails</span>
       </label>
-      {#if !profile.email_enabled}<p class="help">This server has no email configured, so nothing is sent for now.</p>{/if}
+      {#if !profile.email_enabled}<p class="help">
+          This server has no email configured, so nothing is sent for now.
+        </p>{/if}
       {@render feedback('email')}
     </section>
 
@@ -219,12 +273,31 @@
       <section class="section">
         <h3>Password</h3>
         <div class="form-grid">
-          <label class="field"><span>Current password</span><input type="password" autocomplete="current-password" bind:value={currentPassword} /></label>
-          <label class="field"><span>New password</span><input type="password" autocomplete="new-password" bind:value={newPassword} /></label>
+          <label class="field">
+            <span>Current password</span><input
+              type="password"
+              autocomplete="current-password"
+              bind:value={currentPassword}
+            />
+          </label>
+          <label class="field">
+            <span>New password</span><input
+              type="password"
+              autocomplete="new-password"
+              bind:value={newPassword}
+            />
+          </label>
         </div>
         <p class="help">At least 8 characters.</p>
         <div class="section-actions">
-          <button type="button" class="primary" disabled={newPassword.length < 8 || !currentPassword} onclick={savePassword}>Change password</button>
+          <button
+            type="button"
+            class="primary"
+            disabled={newPassword.length < 8 || !currentPassword}
+            onclick={savePassword}
+          >
+            Change password
+          </button>
         </div>
         {@render feedback('password')}
       </section>
@@ -232,10 +305,15 @@
 
     <section class="section danger-zone">
       <h3>Delete account</h3>
-      <p class="help">Deletes your account, all jobs, results, stored audio and your saved API key. This cannot be undone.</p>
+      <p class="help">
+        Deletes your account, all jobs, results, stored audio and your saved API key. This cannot be
+        undone.
+      </p>
       {#if !confirmDelete}
         <div class="section-actions">
-          <button type="button" class="danger" onclick={() => (confirmDelete = true)}>Delete my account…</button>
+          <button type="button" class="danger" onclick={() => (confirmDelete = true)}>
+            Delete my account…
+          </button>
         </div>
       {:else}
         {#if !profile.oauth_provider}
@@ -245,7 +323,9 @@
           </label>
         {/if}
         <div class="section-actions">
-          <button type="button" class="danger solid" onclick={removeAccount}>Permanently delete</button>
+          <button type="button" class="danger solid" onclick={removeAccount}>
+            Permanently delete
+          </button>
           <button type="button" onclick={() => (confirmDelete = false)}>Keep my account</button>
         </div>
       {/if}

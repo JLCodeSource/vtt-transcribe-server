@@ -1,8 +1,8 @@
 <script lang="ts">
   // Minimal working Svelte 5 app with proper TypeScript and styling
-  const message = $state("VTT Transcribe Frontend Working! ✅");
+  const message = $state('VTT Transcribe Frontend Working! ✅');
   let count = $state(0);
-  
+
   function increment() {
     count += 1;
   }
@@ -10,18 +10,14 @@
 
 <main>
   <h1>{message}</h1>
-  
-  <p class="tagline">
-    🎬 AI-Powered Video Transcription with Speaker Diarization
-  </p>
-  
+
+  <p class="tagline">🎬 AI-Powered Video Transcription with Speaker Diarization</p>
+
   <div class="test-section">
     <h2>Test Counter: {count}</h2>
-    <button onclick={increment}>
-      Click me! (+1)
-    </button>
+    <button onclick={increment}> Click me! (+1) </button>
   </div>
-  
+
   <div class="features-section">
     <h3>✅ Svelte 5 Features Working:</h3>
     <ul>
@@ -64,7 +60,7 @@
   }
 
   button {
-    background: #4CAF50;
+    background: #4caf50;
     color: white;
     padding: 10px 20px;
     border: none;

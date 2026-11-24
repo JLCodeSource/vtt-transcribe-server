@@ -13,7 +13,9 @@
   const { jobId, data, onupdate, onclose }: Props = $props();
 
   // svelte-ignore state_referenced_locally
-  let names = $state<Record<string, string>>(Object.fromEntries(data.speakers.map((s) => [s.id, s.name ?? ''])));
+  let names = $state<Record<string, string>>(
+    Object.fromEntries(data.speakers.map((s) => [s.id, s.name ?? '']))
+  );
   let mergeInto = $state<Record<string, string>>({});
   let splitting = $state<string | null>(null);
   let picked = $state<number[]>([]);
@@ -22,7 +24,8 @@
   let speakerCount = $state('');
   let playing: HTMLAudioElement | null = null;
 
-  const mm = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  const mm = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
   function play(speakerId: string, start?: number, end?: number) {
     playing?.pause();
@@ -45,7 +48,8 @@
     }
   }
 
-  const save = () => run(() => renameSpeakers(jobId, names), 'Names saved. Downloads now read “Name: text”.');
+  const save = () =>
+    run(() => renameSpeakers(jobId, names), 'Names saved. Downloads now read “Name: text”.');
 
   function merge(sourceId: string) {
     const target = mergeInto[sourceId];
@@ -67,19 +71,26 @@
     const indices = picked;
     splitting = null;
     picked = [];
-    await run(() => splitSpeaker(jobId, speakerId, indices), 'Split. Listen to both and merge back if it was wrong.');
+    await run(
+      () => splitSpeaker(jobId, speakerId, indices),
+      'Split. Listen to both and merge back if it was wrong.'
+    );
   }
 
   const redo = () =>
-    run(() => rediarize(jobId, speakerCount ? Number(speakerCount) : null), 'Added a new speaker version with the re-run. The other versions are kept; switch between them in the transcript view.');
+    run(
+      () => rediarize(jobId, speakerCount ? Number(speakerCount) : null),
+      'Added a new speaker version with the re-run. The other versions are kept; switch between them in the transcript view.'
+    );
 </script>
 
 <section class="review" aria-label="Review speakers">
   <h2>Who is who?</h2>
   <p class="hint">
     Found {data.speakers.length}
-    {data.speakers.length === 1 ? 'speaker' : 'speakers'}. Listen to a sample, name each speaker, merge voices that are
-    the same person, or split off lines that belong to someone else. These edits change only the speaker version you are looking at.
+    {data.speakers.length === 1 ? 'speaker' : 'speakers'}. Listen to a sample, name each speaker,
+    merge voices that are the same person, or split off lines that belong to someone else. These
+    edits change only the speaker version you are looking at.
   </p>
   {#if note}<p class="note" role="status">{note}</p>{/if}
 
@@ -100,21 +111,42 @@
         {#if sp.sample_text}<p class="quote">“{sp.sample_text}”</p>{/if}
         <div class="row">
           {#each sp.samples as s, i (i)}
-            <button type="button" class="sm" onclick={() => play(sp.id, s.start, s.end)} aria-label="Play sample {i + 1} of {sp.display_name}">
+            <button
+              type="button"
+              class="sm"
+              onclick={() => play(sp.id, s.start, s.end)}
+              aria-label="Play sample {i + 1} of {sp.display_name}"
+            >
               ▶ {mm(s.start)}
             </button>
           {/each}
-          <button type="button" class="sm" onclick={() => startSplit(sp.id)} disabled={busy || sp.segment_count < 2}>
+          <button
+            type="button"
+            class="sm"
+            onclick={() => startSplit(sp.id)}
+            disabled={busy || sp.segment_count < 2}
+          >
             {splitting === sp.id ? 'Cancel split' : 'Split…'}
           </button>
           {#if data.speakers.length > 1}
-            <select aria-label="Merge {sp.display_name} into" bind:value={mergeInto[sp.id]} disabled={busy}>
+            <select
+              aria-label="Merge {sp.display_name} into"
+              bind:value={mergeInto[sp.id]}
+              disabled={busy}
+            >
               <option value="">Merge into…</option>
               {#each data.speakers.filter((o) => o.id !== sp.id) as o (o.id)}
                 <option value={o.id}>{o.display_name}</option>
               {/each}
             </select>
-            <button type="button" class="sm" disabled={busy || !mergeInto[sp.id]} onclick={() => merge(sp.id)}>Merge</button>
+            <button
+              type="button"
+              class="sm"
+              disabled={busy || !mergeInto[sp.id]}
+              onclick={() => merge(sp.id)}
+            >
+              Merge
+            </button>
           {/if}
         </div>
         {#if splitting === sp.id}
@@ -122,12 +154,23 @@
             <p class="hint">Tick the lines that belong to a different person.</p>
             {#each data.segments.filter((g) => g.speaker_id === sp.id) as g (g.index)}
               <label class="line">
-                <input type="checkbox" checked={picked.includes(g.index)} onchange={() => toggle(g.index)} />
-                <span class="meta">{mm(g.start)}</span> {g.text}
+                <input
+                  type="checkbox"
+                  checked={picked.includes(g.index)}
+                  onchange={() => toggle(g.index)}
+                />
+                <span class="meta">{mm(g.start)}</span>
+                {g.text}
               </label>
             {/each}
-            <button type="button" class="primary" disabled={busy || picked.length === 0} onclick={() => confirmSplit(sp.id)}>
-              Split off {picked.length} {picked.length === 1 ? 'line' : 'lines'}
+            <button
+              type="button"
+              class="primary"
+              disabled={busy || picked.length === 0}
+              onclick={() => confirmSplit(sp.id)}
+            >
+              Split off {picked.length}
+              {picked.length === 1 ? 'line' : 'lines'}
             </button>
           </div>
         {/if}

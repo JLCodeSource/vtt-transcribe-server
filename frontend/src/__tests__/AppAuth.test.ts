@@ -29,7 +29,10 @@ describe('App with Auth Integration', () => {
     fetchMock
       .mockResolvedValueOnce(noProviders)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1, username: 'newuser' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'new-user-token', token_type: 'bearer' }) });
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'new-user-token', token_type: 'bearer' }),
+      });
 
     render(App);
 
@@ -54,9 +57,11 @@ describe('App with Auth Integration', () => {
   });
 
   it('shows registration error when register call fails', async () => {
-    fetchMock
-      .mockResolvedValueOnce(noProviders)
-      .mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ detail: 'Email already registered' }) });
+    fetchMock.mockResolvedValueOnce(noProviders).mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ detail: 'Email already registered' }),
+    });
 
     render(App);
 
@@ -91,9 +96,10 @@ describe('App with Auth Integration', () => {
 
   it('shows file upload after successful login', async () => {
     // Mock OAuth providers fetch on Login mount, then login request
-    fetchMock
-      .mockResolvedValueOnce(noProviders)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'fake-token', token_type: 'bearer' }) });
+    fetchMock.mockResolvedValueOnce(noProviders).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ access_token: 'fake-token', token_type: 'bearer' }),
+    });
 
     render(App);
 
@@ -112,9 +118,11 @@ describe('App with Auth Integration', () => {
 
   it('shows error message on failed login', async () => {
     // Mock OAuth providers fetch, then failed login request
-    fetchMock
-      .mockResolvedValueOnce(noProviders)
-      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ detail: 'Incorrect username or password' }) });
+    fetchMock.mockResolvedValueOnce(noProviders).mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: async () => ({ detail: 'Incorrect username or password' }),
+    });
 
     render(App);
 
@@ -133,9 +141,10 @@ describe('App with Auth Integration', () => {
 
   it('updates UserMenu with username after login', async () => {
     // Mock OAuth providers fetch, then login request
-    fetchMock
-      .mockResolvedValueOnce(noProviders)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'fake-token', token_type: 'bearer' }) });
+    fetchMock.mockResolvedValueOnce(noProviders).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ access_token: 'fake-token', token_type: 'bearer' }),
+    });
 
     render(App);
 
@@ -154,9 +163,10 @@ describe('App with Auth Integration', () => {
 
   it('persists token in localStorage after login', async () => {
     // Mock OAuth providers fetch, then login request
-    fetchMock
-      .mockResolvedValueOnce(noProviders)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'fake-token-12345', token_type: 'bearer' }) });
+    fetchMock.mockResolvedValueOnce(noProviders).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ access_token: 'fake-token-12345', token_type: 'bearer' }),
+    });
 
     render(App);
 
@@ -182,7 +192,10 @@ describe('App with Auth Integration', () => {
     // If valid, Login unmounts (no longer authenticated state)
     fetchMock
       .mockResolvedValueOnce(noProviders) // Login's OAuth providers fetch
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ username: 'existinguser', email: 'user@example.com' }) }); // App's /auth/me
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: 'existinguser', email: 'user@example.com' }),
+      }); // App's /auth/me
 
     render(App);
 
@@ -202,7 +215,10 @@ describe('App with Auth Integration', () => {
     // After logout: OAuth providers fetch again when Login re-renders
     fetchMock
       .mockResolvedValueOnce(noProviders) // Initial OAuth providers
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ username: 'existinguser', email: 'user@example.com' }) }) // /auth/me validation
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: 'existinguser', email: 'user@example.com' }),
+      }) // /auth/me validation
       .mockResolvedValueOnce(noProviders); // OAuth providers after logout
 
     render(App);

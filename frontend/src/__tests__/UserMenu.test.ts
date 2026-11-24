@@ -240,7 +240,9 @@ describe('UserMenu', () => {
 
     it('closes menu after Logout is clicked', async () => {
       const onlogout = vi.fn();
-      const { container } = render(UserMenu, { props: { isLoggedIn: true, username: 'Alice', onlogout } });
+      const { container } = render(UserMenu, {
+        props: { isLoggedIn: true, username: 'Alice', onlogout },
+      });
 
       const button = screen.getByLabelText('User menu');
       await fireEvent.click(button);
@@ -312,7 +314,7 @@ describe('UserMenu', () => {
       await fireEvent.click(button);
 
       const menuButtons = container.querySelectorAll('.menu-item');
-      menuButtons.forEach(btn => {
+      menuButtons.forEach((btn) => {
         expect(btn.tagName).toBe('BUTTON');
       });
     });

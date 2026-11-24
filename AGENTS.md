@@ -43,14 +43,13 @@ docker run --rm -v "$PWD":/w -w /w -e UV_PROJECT_ENVIRONMENT=/opt/venv python:3.
   'pip install -q uv && uv sync --frozen && /opt/venv/bin/ruff format --check vtt_server tests scripts hatch_build.py \
    && /opt/venv/bin/ruff check . && /opt/venv/bin/pytest -q -p no:cacheprovider -W error'
 docker run --rm -v "$PWD/frontend":/w -w /w node:22-slim bash -c \
-  'npm ci && npx svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && npm run test'
+  'npm ci && npm run check && npm run lint && npm run format:check && npm run test'
 ```
 
 Browser e2e (`npm run test:e2e`) runs when you touch UI behaviour; it is manual in CI.
 
-These already fail on `main` (found by the audit). They are tracked as beads and fixed first; do not add to them and do not
-"fix" them inside an unrelated task: `svelte-check` (13 errors in 2 test files), `npm run lint` (no ESLint 9 config),
-prettier (26 files).
+Every gate above (ruff, pytest `-W error`, `svelte-check`, ESLint, prettier, Vitest) is clean on `main` and must stay clean.
+Do not add warnings or suppressions; fix the cause instead.
 
 `pytest -W error` is clean: the only filter is passlib's import of the deprecated stdlib `crypt` module, applied once in
 `tests/conftest.py`. Do not add other filters; fix the warning instead (a 64+ byte `TEST_SECRET_KEY`, dispose engines).

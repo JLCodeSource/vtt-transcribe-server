@@ -6,12 +6,7 @@
     onsettings?: () => void;
   }
 
-  let { 
-    isLoggedIn = false, 
-    username = 'Guest',
-    onlogout,
-    onsettings
-  }: Props = $props();
+  let { isLoggedIn = false, username = 'Guest', onlogout, onsettings }: Props = $props();
 
   let menuOpen = $state(false);
 
@@ -46,7 +41,9 @@
 
 <div class="user-menu">
   <button class="user-button" onclick={toggleMenu} aria-label="User menu">
-    <span class="user-avatar">{isLoggedIn && username.trim() ? username[0].toUpperCase() : '👤'}</span>
+    <span class="user-avatar">
+      {isLoggedIn && username.trim() ? username[0].toUpperCase() : '👤'}
+    </span>
     <span class="user-name">{username}</span>
     <span class="chevron" class:open={menuOpen}>▼</span>
   </button>
@@ -58,7 +55,7 @@
           <p>Configure your API keys in Settings</p>
         </div>
       {/if}
-      
+
       <button class="menu-item" onclick={handleSettings}>
         <span class="menu-icon">⚙️</span>
         <span>Settings</span>

@@ -47,14 +47,17 @@
       if (rank(a) !== rank(b)) return rank(a) - rank(b);
       if (rank(a) === 1) return (a.queue_position ?? 1e9) - (b.queue_position ?? 1e9);
       return finishedAt(b) - finishedAt(a);
-    }),
+    })
   );
 
   const active = (j: JobSummary) => j.status === 'pending' || j.status === 'processing';
   const percent = (j: JobSummary) => Math.round((j.progress ?? 0) * 100);
 
   function stepLabel(j: JobSummary): string {
-    if (j.status === 'pending') return j.queue_position ? `Waiting — position ${j.queue_position} in the queue` : 'Waiting in the queue';
+    if (j.status === 'pending')
+      return j.queue_position
+        ? `Waiting — position ${j.queue_position} in the queue`
+        : 'Waiting in the queue';
     return STEP_LABELS[j.step ?? ''] ?? j.step ?? j.status;
   }
 
@@ -117,7 +120,9 @@
   }
 
   async function saveEdit(j: JobSummary) {
-    await act(() => setJobRetention(j.job_id, editMode, editMode === 'hold' ? Number(editDays) : null));
+    await act(() =>
+      setJobRetention(j.job_id, editMode, editMode === 'hold' ? Number(editDays) : null)
+    );
     editing = null;
   }
 
@@ -140,7 +145,9 @@
       {#if onhome}<button type="button" class="primary" onclick={onhome}>Add files</button>{/if}
     </div>
   {:else}
-    <p class="muted summary">{queueLength} waiting in the queue. Jobs run one at a time, in the order they were added.</p>
+    <p class="muted summary">
+      {queueLength} waiting in the queue. Jobs run one at a time, in the order they were added.
+    </p>
     <ul class="job-list">
       {#each jobs as j (j.job_id)}
         <li class="job" data-testid="job-row" data-status={j.status}>
@@ -153,7 +160,14 @@
             <div class="step">{stepLabel(j)}{detail(j) ? ` — ${detail(j)}` : ''}</div>
             {#if j.status === 'processing'}
               <div class="bar-row">
-                <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent(j)} aria-label="Progress">
+                <div
+                  class="progress"
+                  role="progressbar"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow={percent(j)}
+                  aria-label="Progress"
+                >
                   <span style="width: {percent(j)}%"></span>
                 </div>
                 <span class="pct">{percent(j)}%</span>
@@ -173,10 +187,18 @@
                 <option value="delete">Delete after download</option>
               </select>
               {#if editMode === 'hold'}
-                <input type="number" min="1" max="3650" bind:value={editDays} aria-label="Days to keep" />
+                <input
+                  type="number"
+                  min="1"
+                  max="3650"
+                  bind:value={editDays}
+                  aria-label="Days to keep"
+                />
               {/if}
               <button type="button" class="primary sm" onclick={() => saveEdit(j)}>Save</button>
-              <button type="button" class="ghost sm" onclick={() => (editing = null)}>Cancel</button>
+              <button type="button" class="ghost sm" onclick={() => (editing = null)}>
+                Cancel
+              </button>
             </div>
           {/if}
 

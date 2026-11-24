@@ -52,8 +52,11 @@
   let busy = $state(false);
   let translateError = $state('');
   const hasTranslation = $derived(segments.some((seg) => seg.translation));
-  const showingTranslation = $derived(versions ? language !== 'original' && hasTranslation : hasTranslation && showTranslation);
-  const textOf = (seg: TranscriptSegment) => (showingTranslation && !sideBySide && seg.translation) || seg.text;
+  const showingTranslation = $derived(
+    versions ? language !== 'original' && hasTranslation : hasTranslation && showTranslation
+  );
+  const textOf = (seg: TranscriptSegment) =>
+    (showingTranslation && !sideBySide && seg.translation) || seg.text;
 
   async function guarded(action: () => Promise<void> | void) {
     busy = true;
@@ -82,12 +85,16 @@
     }
   }
 
-  const pickLanguage = (event: Event) => guarded(() => onselect?.({ language: (event.target as HTMLSelectElement).value }));
-  const pickDiarization = (event: Event) => guarded(() => onselect?.({ diarization: (event.target as HTMLSelectElement).value }));
-  const rerun = () => guarded(() => onrediarize?.(rerunCount === 'auto' ? null : Number(rerunCount)));
+  const pickLanguage = (event: Event) =>
+    guarded(() => onselect?.({ language: (event.target as HTMLSelectElement).value }));
+  const pickDiarization = (event: Event) =>
+    guarded(() => onselect?.({ diarization: (event.target as HTMLSelectElement).value }));
+  const rerun = () =>
+    guarded(() => onrediarize?.(rerunCount === 'auto' ? null : Number(rerunCount)));
 
   function remove(kind: 'translation' | 'diarization', id: string, label: string) {
-    const what = kind === 'translation' ? `the ${label} translation` : `the speaker version “${label}”`;
+    const what =
+      kind === 'translation' ? `the ${label} translation` : `the speaker version “${label}”`;
     if (!confirm(`Delete ${what}? The original text and the other versions are kept.`)) return;
     void guarded(() => ondelete?.(kind, id));
   }
@@ -95,7 +102,9 @@
   const when = (iso?: string) => (iso ? new Date(iso).toLocaleString() : '');
   // "2 speakers · 11/22/2026, 9:30 AM": the count is only added when the name does not already say it
   function versionLabel(d: DiarizationVersion): string {
-    const count = /speaker|found/i.test(d.label) ? '' : ` · ${d.speakers} ${d.speakers === 1 ? 'speaker' : 'speakers'}`;
+    const count = /speaker|found/i.test(d.label)
+      ? ''
+      : ` · ${d.speakers} ${d.speakers === 1 ? 'speaker' : 'speakers'}`;
     return `${d.label}${count}${d.created_at ? ` · ${when(d.created_at)}` : ''}`;
   }
   const activeVersion = $derived(versions?.diarizations.find((d) => d.id === diarization));
@@ -104,6 +113,7 @@
   let selectedSpeaker = $state('all');
 
   const speakers = $derived.by(() => {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local accumulator inside $derived.by, not state
     const speakerSet = new Set<string>();
     segments.forEach((seg) => {
       if (seg.speaker) {
@@ -136,9 +146,15 @@
     try {
       // With versions the choice is explicit (language, diarization, bilingual); otherwise the old "translated" flag.
       const query = versions
-        ? exportQuery(format, { language, diarization, bilingual: bilingual && language !== 'original' })
+        ? exportQuery(format, {
+            language,
+            diarization,
+            bilingual: bilingual && language !== 'original',
+          })
         : `format=${format}${hasTranslation && showTranslation ? '&translated=true' : ''}`;
-      const response = await fetch(`/api/jobs/${jobId}/download?${query}`, { headers: authHeaders() });
+      const response = await fetch(`/api/jobs/${jobId}/download?${query}`, {
+        headers: authHeaders(),
+      });
       if (!response.ok) {
         throw new Error(`Download failed: ${response.statusText}`);
       }
@@ -188,17 +204,26 @@
         <label class="field">
           <span>Language</span>
           <select aria-label="Language" value={language} onchange={pickLanguage} disabled={busy}>
-            <option value="original">Original{versions.original.language ? ` (${versions.original.language})` : ''}</option>
+            <option value="original">
+              Original{versions.original.language ? ` (${versions.original.language})` : ''}
+            </option>
             {#each versions.translations as t (t.language)}
               <option value={t.language}>{t.language}</option>
             {/each}
           </select>
         </label>
         {#if language !== 'original'}
-          <button type="button" class="sm danger" onclick={() => remove('translation', language, language)} disabled={busy}>
+          <button
+            type="button"
+            class="sm danger"
+            onclick={() => remove('translation', language, language)}
+            disabled={busy}
+          >
             Delete this translation
           </button>
-          <label class="check"><input type="checkbox" bind:checked={sideBySide} /> <span>Side by side</span></label>
+          <label class="check">
+            <input type="checkbox" bind:checked={sideBySide} /> <span>Side by side</span>
+          </label>
         {/if}
       </div>
       <p class="help">
@@ -211,7 +236,12 @@
         <label class="field">
           <span>Speakers</span>
           {#if versions.diarizations.length > 0}
-            <select aria-label="Speaker version" value={diarization ?? ''} onchange={pickDiarization} disabled={busy}>
+            <select
+              aria-label="Speaker version"
+              value={diarization ?? ''}
+              onchange={pickDiarization}
+              disabled={busy}
+            >
               {#each versions.diarizations as d (d.id)}
                 <option value={d.id}>{versionLabel(d)}</option>
               {/each}
@@ -221,7 +251,12 @@
           {/if}
         </label>
         {#if versions.diarizations.length > 1 && activeVersion}
-          <button type="button" class="sm danger" onclick={() => remove('diarization', activeVersion.id, activeVersion.label)} disabled={busy}>
+          <button
+            type="button"
+            class="sm danger"
+            onclick={() => remove('diarization', activeVersion.id, activeVersion.label)}
+            disabled={busy}
+          >
             Delete this version
           </button>
         {/if}
@@ -231,18 +266,30 @@
         <div class="version-row">
           <label class="field">
             <span>Re-run speaker identification</span>
-            <select aria-label="Number of speakers for the re-run" bind:value={rerunCount} disabled={busy}>
+            <select
+              aria-label="Number of speakers for the re-run"
+              bind:value={rerunCount}
+              disabled={busy}
+            >
               <option value="auto">Auto-detect</option>
-              {#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}<option value={String(n)}>{n} {n === 1 ? 'speaker' : 'speakers'}</option>{/each}
+              {#each [1, 2, 3, 4, 5, 6, 7, 8] as n (n)}<option value={String(n)}>
+                  {n}
+                  {n === 1 ? 'speaker' : 'speakers'}
+                </option>{/each}
             </select>
           </label>
-          <button type="button" onclick={rerun} disabled={busy}>{busy ? 'Working…' : 'Re-run'}</button>
+          <button type="button" onclick={rerun} disabled={busy}>
+            {busy ? 'Working…' : 'Re-run'}
+          </button>
           <span class="help">Adds a version; the existing ones are kept.</span>
         </div>
       {/if}
 
       {#if language !== 'original'}
-        <label class="check"><input type="checkbox" bind:checked={bilingual} /> <span>Downloads contain both the original and {language}</span></label>
+        <label class="check">
+          <input type="checkbox" bind:checked={bilingual} />
+          <span>Downloads contain both the original and {language}</span>
+        </label>
       {/if}
     </section>
   {/if}
@@ -251,7 +298,9 @@
     <div class="controls translate">
       <select aria-label="Translate to language" bind:value={targetLanguage} class="search-input">
         <option value="">{versions ? 'Add language…' : 'Translate to…'}</option>
-        {#each languageChoices(languages, targetLanguage) as l (l)}<option value={l}>{l}</option>{/each}
+        {#each languageChoices(languages, targetLanguage) as l (l)}<option value={l}>
+            {l}
+          </option>{/each}
       </select>
       <button type="button" onclick={translate} disabled={translating || !targetLanguage.trim()}>
         {translating ? 'Translating…' : versions ? 'Add translation' : 'Translate'}
@@ -277,7 +326,7 @@
     {#if speakers.length > 0}
       <select bind:value={selectedSpeaker} class="speaker-filter">
         <option value="all">All Speakers</option>
-        {#each speakers as speaker}
+        {#each speakers as speaker (speaker)}
           <option value={speaker}>{speaker}</option>
         {/each}
       </select>
